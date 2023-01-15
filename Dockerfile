@@ -18,7 +18,7 @@ ENV PGID=0
 ENV FAUCETD_WALLET_SEED=
 
 # Copy binary and prepare data dir.
-COPY --from=builder /bin/faucetd /usr/bin/
+COPY --from=builder /faucetd/bin/faucetd /usr/bin/
 VOLUME [ "/data" ]
 
 EXPOSE 8080/tcp

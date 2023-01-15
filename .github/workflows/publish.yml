@@ -47,6 +47,9 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
+        with:
+          go-version: '^1.19'
+          check-latest: true
       - name: Install dependencies
         run: |
           sudo apt install -y gcc-aarch64-linux-gnu
@@ -77,6 +80,9 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
+        with:
+          go-version: '^1.19'
+          check-latest: true
       - name: Build amd64
         env:
           CGO_ENABLED: 1
@@ -102,6 +108,9 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
+        with:
+          go-version: '^1.19'
+          check-latest: true
       - name: Build amd64
         env:
           CGO_ENABLED: 1
