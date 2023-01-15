@@ -48,6 +48,7 @@ func (n *Node) ChainManager() *consensus.ChainManager {
 	return n.cm
 }
 
+// TPool returns the node's transaction pool
 func (n *Node) TPool() modules.TransactionPool {
 	return n.tp
 }

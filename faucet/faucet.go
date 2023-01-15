@@ -13,6 +13,7 @@ import (
 	"go.sia.tech/siad/types"
 )
 
+// request statues are used to track the status of a faucet request
 const (
 	RequestStatusPending   RequestStatus = "pending"
 	RequestStatusBroadcast RequestStatus = "broadcast"
@@ -20,6 +21,7 @@ const (
 )
 
 type (
+	// An UpdateTx atomically updates the store
 	UpdateTx interface {
 		// ApplyTransactionBlock marks all faucet requests in a transaction as confirmed
 		ApplyTransactionBlock(transactionID types.TransactionID, blockID types.BlockID) error
@@ -68,6 +70,7 @@ type (
 		GetLastChange() (modules.ConsensusChangeID, error)
 	}
 
+	// A Wallet funds and signs transactions.
 	Wallet interface {
 		FundTransaction(txn *types.Transaction, amount types.Currency) ([]crypto.Hash, func(), error)
 		SignTransaction(txn *types.Transaction, toSign []crypto.Hash, cf types.CoveredFields) error
@@ -83,6 +86,7 @@ type (
 		ConsensusSetSubscribe(subscriber modules.ConsensusSetSubscriber, start modules.ConsensusChangeID, cancel <-chan struct{}) error
 	}
 
+	// A TPool broadcasts transactions to the network.
 	TPool interface {
 		// AcceptTransactionSet accepts a set of potentially interdependent
 		// transactions.
@@ -108,17 +112,21 @@ type (
 )
 
 var (
-	ErrRequestExeeded = errors.New("amount requested exceeds max amount per day")
+	// ErrRequestExceeded is returned if the amount requested exceeds the maximum
+	ErrRequestExceeded = errors.New("amount requested exceeds max amount per day")
 )
 
+// String returns the string representation of a RequestID
 func (r RequestID) String() string {
 	return hex.EncodeToString(r[:])
 }
 
+// MarshalText implements the encoding.TextMarshaler interface
 func (r RequestID) MarshalText() ([]byte, error) {
 	return []byte(r.String()), nil
 }
 
+// UnmarshalText implements the encoding.TextUnmarshaler interface
 func (r *RequestID) UnmarshalText(b []byte) error {
 	if len(b) != 64 {
 		return fmt.Errorf("invalid request id: %s", string(b))
@@ -192,7 +200,7 @@ func (f *Faucet) RequestAmount(address types.UnlockHash, ipAddress string, amoun
 	}
 
 	if amountRequested.Add(amount).Cmp(f.maxPerDay) > 0 {
-		return RequestID{}, ErrRequestExeeded
+		return RequestID{}, ErrRequestExceeded
 	}
 
 	return f.store.AddRequest(address, ipAddress, amount)

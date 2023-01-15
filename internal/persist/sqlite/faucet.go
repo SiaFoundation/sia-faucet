@@ -148,6 +148,7 @@ LIMIT $3`, faucet.RequestStatusPending, faucet.RequestStatusBroadcast, valueTime
 	return requests, nil
 }
 
+// NewFaucetStore creates a new faucet store
 func NewFaucetStore(db *Store) *FaucetStore {
 	return &FaucetStore{db}
 }

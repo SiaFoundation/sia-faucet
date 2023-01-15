@@ -21,6 +21,7 @@ type (
 		ConsensusSetSubscribe(subscriber modules.ConsensusSetSubscriber, start modules.ConsensusChangeID, cancel <-chan struct{}) error
 	}
 
+	// A TPool accepts transactions and broadcasts them to the network.
 	TPool interface {
 		TransactionPoolSubscribe(subscriber modules.TransactionPoolSubscriber)
 	}
