@@ -1,0 +1,29 @@
+# Helper image to build faucetd.
+FROM golang AS builder
+LABEL maintainer="The Sia Foundation <info@sia.tech>"
+
+WORKDIR /faucetd
+
+# Copy and build binary.
+COPY . .
+RUN go build -o bin/ -tags='netgo' -trimpath -a ./cmd/faucetd
+
+# Build image that will be used to run faucetd.
+FROM debian:bookworm-slim
+LABEL maintainer="The Sia Foundation <info@sia.tech>"
+
+ENV PUID=0
+ENV PGID=0
+
+ENV FAUCETD_WALLET_SEED=
+
+# Copy binary and prepare data dir.
+COPY --from=builder /bin/faucetd /usr/bin/
+VOLUME [ "/data" ]
+
+EXPOSE 8080/tcp
+EXPOSE 9981/tcp
+
+USER ${PUID}:${PGID}
+
+ENTRYPOINT [ "faucetd", "-d", "./data", "-http", ":8080" ]
