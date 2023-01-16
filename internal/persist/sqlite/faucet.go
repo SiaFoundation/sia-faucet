@@ -102,27 +102,27 @@ func (fs *FaucetStore) ProcessRequests(requests []faucet.RequestID, transactionI
 	return err
 }
 
-// AmountRequested returns the sum of all requests for the given address and
+// Requests returns the sum and count of all requests for the given address and
 // ip address in the last 24 hours.
-func (fs *FaucetStore) AmountRequested(address types.UnlockHash, ipAddress string) (types.Currency, error) {
+func (fs *FaucetStore) Requests(address types.UnlockHash, ipAddress string) (types.Currency, int, error) {
 	minTime := time.Now().Add(-24 * time.Hour).Unix()
-	rows, err := fs.db.db.Query(`SELECT id, amount, date_created FROM faucet_requests WHERE (unlock_hash=$1 OR ip_address=$2) AND date_created > $3`, valueHash(address), ipAddress, minTime)
+	rows, err := fs.db.db.Query(`SELECT amount FROM faucet_requests WHERE (unlock_hash=$1 OR ip_address=$2) AND date_created > $3`, valueHash(address), ipAddress, minTime)
 	if err != nil {
-		return types.ZeroCurrency, fmt.Errorf("failed to get amount requested: %w", err)
+		return types.ZeroCurrency, 0, fmt.Errorf("failed to get amount requested: %w", err)
 	}
 	defer rows.Close()
 
 	var total types.Currency
+	var count int
 	for rows.Next() {
-		var id faucet.RequestID
 		var amount types.Currency
-		var timestamp int64
-		if err := rows.Scan(scanHash((*[32]byte)(&id)), scanCurrency(&amount), &timestamp); err != nil {
-			return types.ZeroCurrency, fmt.Errorf("failed to scan amount requested: %w", err)
+		if err := rows.Scan(scanCurrency(&amount)); err != nil {
+			return types.ZeroCurrency, 0, fmt.Errorf("failed to scan amount requested: %w", err)
 		}
 		total = total.Add(amount)
+		count++
 	}
-	return total, nil
+	return total, count, nil
 }
 
 // UnprocessedRequests returns the first n unprocessed requests

@@ -4,6 +4,7 @@ go 1.19
 
 require (
 	github.com/mattn/go-sqlite3 v1.14.16
+	github.com/spf13/cobra v1.0.0
 	gitlab.com/NebulousLabs/fastrand v0.0.0-20181126182046-603482d69e40
 	go.sia.tech/jape v0.5.0
 	go.sia.tech/siad v1.5.10-0.20230114034931-004f2ea4bf09
@@ -15,10 +16,12 @@ require (
 	github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da // indirect
 	github.com/dchest/threefish v0.0.0-20120919164726-3ecf4c494abf // indirect
 	github.com/gorilla/websocket v1.4.2 // indirect
+	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/julienschmidt/httprouter v1.3.0 // indirect
 	github.com/klauspost/cpuid v1.2.2 // indirect
 	github.com/klauspost/reedsolomon v1.9.3 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+	github.com/spf13/pflag v1.0.3 // indirect
 	gitlab.com/NebulousLabs/bolt v1.4.4 // indirect
 	gitlab.com/NebulousLabs/demotemutex v0.0.0-20151003192217-235395f71c40 // indirect
 	gitlab.com/NebulousLabs/encoding v0.0.0-20200604091946-456c3dc907fe // indirect

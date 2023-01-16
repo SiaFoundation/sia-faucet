@@ -2,6 +2,7 @@ package faucet_test
 
 import (
 	"crypto/ed25519"
+	"errors"
 	"log"
 	"path/filepath"
 	"testing"
@@ -32,13 +33,20 @@ func TestFaucet(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	cm := node.ChainManager()
+	tp := node.TPool()
+	w := node.Wallet()
+
 	node2, err := test.NewNode(ed25519.NewKeyFromSeed(frand.Bytes(ed25519.SeedSize)), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer node2.Close()
 
-	f, err := faucet.New(node.ChainManager(), node.TPool(), node.Wallet(), sqlite.NewFaucetStore(db), types.SiacoinPrecision.Mul64(10), 5*time.Second, log.Default())
+	// connect the two nodes
+	node2.ConnectPeer(node.GatewayAddr())
+
+	f, err := faucet.New(cm, tp, w, sqlite.NewFaucetStore(db), 5, types.SiacoinPrecision.Mul64(10), time.Second, log.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,12 +54,12 @@ func TestFaucet(t *testing.T) {
 
 	// request too much
 	_, err = f.RequestAmount(node2.Wallet().Address(), "10.10.10.10", types.SiacoinPrecision.Mul64(100))
-	if err == nil {
-		t.Fatal("expected error")
+	if !errors.Is(err, faucet.ErrAmountExceeded) {
+		t.Fatalf("expected %v, got %v", faucet.ErrAmountExceeded, err)
 	}
 
 	// create a new request
-	requestID, err := f.RequestAmount(node2.Wallet().Address(), "10.10.10.10", types.SiacoinPrecision.Mul64(5))
+	requestID, err := f.RequestAmount(node2.Wallet().Address(), "10.10.10.10", types.SiacoinPrecision)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,20 +73,16 @@ func TestFaucet(t *testing.T) {
 	switch {
 	case request.UnlockHash != node2.Wallet().Address():
 		t.Fatalf("expected %v, got %v", node2.Wallet().Address(), request.UnlockHash)
-	case !request.Amount.Equals(types.SiacoinPrecision.Mul64(5)):
-		t.Fatalf("expected %v, got %v", types.SiacoinPrecision.Mul64(5), request.Amount)
+	case !request.Amount.Equals(types.SiacoinPrecision):
+		t.Fatalf("expected %v, got %v", types.SiacoinPrecision, request.Amount)
 	case request.IPAddress != "10.10.10.10":
 		t.Fatalf("expected %v, got %v", "10.10.10.10", request.IPAddress)
 	case request.Status != faucet.RequestStatusPending:
 		t.Fatalf("expected %v, got %v", faucet.RequestStatusBroadcast, request.Status)
 	}
 
-	// mine a block to trigger processing
-	if err := node.MineBlocks(node.Wallet().Address(), 1); err != nil {
-		t.Fatal(err)
-	}
-
-	time.Sleep(10 * time.Second)
+	// wait for processing
+	time.Sleep(5 * time.Second)
 
 	// check that the request has moved to broadcast
 	request, err = f.Request(requestID)
@@ -94,16 +98,38 @@ func TestFaucet(t *testing.T) {
 	if err := node.MineBlocks(node.Wallet().Address(), 1); err != nil {
 		t.Fatal(err)
 	}
+	time.Sleep(5 * time.Second)
 
-	// check that the request has moved to broadcast
+	// check that the request has moved to confirmed
 	request, err = f.Request(requestID)
 	if err != nil {
 		t.Fatal(err)
 	} else if request.Status != faucet.RequestStatusConfirmed {
-		t.Fatalf("expected %v, got %v", faucet.RequestStatusBroadcast, request.Status)
+		t.Fatalf("expected %v, got %v", faucet.RequestStatusConfirmed, request.Status)
 	} else if request.TransactionID == (types.TransactionID{}) {
 		t.Fatal("expected transaction id")
 	} else if request.BlockID == (types.BlockID{}) {
 		t.Fatal("expected block id")
+	}
+
+	// validate that the wallet balance was increased
+	_, balance, err := node2.Wallet().Balance()
+	if err != nil {
+		t.Fatal(err)
+	} else if !balance.Equals(types.SiacoinPrecision) {
+		t.Fatalf("expected %v, got %v", types.SiacoinPrecision, balance)
+	}
+
+	// try to request more than the limit
+	for i := 0; i < 4; i++ {
+		_, err = f.RequestAmount(node2.Wallet().Address(), "10.10.10.10", types.SiacoinPrecision)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	_, err = f.RequestAmount(node2.Wallet().Address(), "10.10.10.10", types.SiacoinPrecision)
+	if !errors.Is(err, faucet.ErrCountExceeded) {
+		t.Fatalf("expected %v, got %v", faucet.ErrCountExceeded, err)
 	}
 }

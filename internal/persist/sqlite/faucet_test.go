@@ -64,9 +64,11 @@ func TestAmountRequested(t *testing.T) {
 	expectedAmount := types.SiacoinPrecision.Mul64(1000)
 
 	// check that the amount requested is zero
-	amountRequested, err := fs.AmountRequested(expectedUnlockHash, expectedIPAddress)
+	amountRequested, count, err := fs.Requests(expectedUnlockHash, expectedIPAddress)
 	if err != nil {
 		t.Fatal(err)
+	} else if count != 0 {
+		t.Fatalf("expected 0 requests, got %v", count)
 	} else if amountRequested.Cmp(types.ZeroCurrency) != 0 {
 		t.Fatalf("expected amount requested %v, got %v", types.ZeroCurrency, amountRequested)
 	}
@@ -78,25 +80,31 @@ func TestAmountRequested(t *testing.T) {
 	}
 
 	// Get the amount requested.
-	amountRequested, err = fs.AmountRequested(expectedUnlockHash, expectedIPAddress)
+	amountRequested, count, err = fs.Requests(expectedUnlockHash, expectedIPAddress)
 	if err != nil {
 		t.Fatal(err)
+	} else if count != 1 {
+		t.Fatalf("expected 1 request, got %v", count)
 	} else if amountRequested.Cmp(expectedAmount) != 0 {
 		t.Fatalf("expected amount requested %v, got %v", expectedAmount, amountRequested)
 	}
 
 	// check the amount requested by only the IP
-	amountRequested, err = fs.AmountRequested(types.UnlockHash{}, expectedIPAddress)
+	amountRequested, count, err = fs.Requests(types.UnlockHash{}, expectedIPAddress)
 	if err != nil {
 		t.Fatal(err)
+	} else if count != 1 {
+		t.Fatalf("expected 1 request, got %v", count)
 	} else if amountRequested.Cmp(expectedAmount) != 0 {
 		t.Fatalf("expected amount requested %v, got %v", expectedAmount, amountRequested)
 	}
 
 	// check the amount requested by only the unlock hash
-	amountRequested, err = fs.AmountRequested(expectedUnlockHash, "10.10.10.10")
+	amountRequested, count, err = fs.Requests(expectedUnlockHash, "10.10.10.10")
 	if err != nil {
 		t.Fatal(err)
+	} else if count != 1 {
+		t.Fatalf("expected 1 request, got %v", count)
 	} else if amountRequested.Cmp(expectedAmount) != 0 {
 		t.Fatalf("expected amount requested %v, got %v", expectedAmount, amountRequested)
 	}
@@ -107,17 +115,21 @@ func TestAmountRequested(t *testing.T) {
 	}
 
 	// check the amount requested by only the unlock hash
-	amountRequested, err = fs.AmountRequested(expectedUnlockHash, "1.1.1.1")
+	amountRequested, count, err = fs.Requests(expectedUnlockHash, "1.1.1.1")
 	if err != nil {
 		t.Fatal(err)
+	} else if count != 2 {
+		t.Fatalf("expected 2 requests, got %v", count)
 	} else if amountRequested.Cmp(expectedAmount.Mul64(2)) != 0 {
 		t.Fatalf("expected amount requested %v, got %v", expectedAmount.Mul64(2), amountRequested)
 	}
 
 	// check the amount requested for the second IP
-	amountRequested, err = fs.AmountRequested(types.UnlockHash{}, "10.10.10.10")
+	amountRequested, count, err = fs.Requests(types.UnlockHash{}, "10.10.10.10")
 	if err != nil {
 		t.Fatal(err)
+	} else if count != 1 {
+		t.Fatalf("expected 1 request, got %v", count)
 	} else if amountRequested.Cmp(expectedAmount) != 0 {
 		t.Fatalf("expected amount requested %v, got %v", expectedAmount, amountRequested)
 	}
@@ -128,9 +140,11 @@ func TestAmountRequested(t *testing.T) {
 	}
 
 	// check the amount requested by only the IP
-	amountRequested, err = fs.AmountRequested(types.UnlockHash{}, expectedIPAddress)
+	amountRequested, count, err = fs.Requests(types.UnlockHash{}, expectedIPAddress)
 	if err != nil {
 		t.Fatal(err)
+	} else if count != 2 {
+		t.Fatalf("expected 2 requests, got %v", count)
 	} else if amountRequested.Cmp(expectedAmount.Mul64(2)) != 0 {
 		t.Fatalf("expected amount requested %v, got %v", expectedAmount.Mul64(2), amountRequested)
 	}
@@ -142,9 +156,11 @@ func TestAmountRequested(t *testing.T) {
 	}
 
 	// check the amount requested by the unlock hash and IP
-	amountRequested, err = fs.AmountRequested(expectedUnlockHash, expectedIPAddress)
+	amountRequested, count, err = fs.Requests(expectedUnlockHash, expectedIPAddress)
 	if err != nil {
 		t.Fatal(err)
+	} else if count != 2 {
+		t.Fatalf("expected 2 requests, got %v", count)
 	} else if amountRequested.Cmp(expectedAmount.Mul64(2)) != 0 {
 		t.Fatalf("expected amount requested %v, got %v", expectedAmount.Mul64(2), amountRequested)
 	}

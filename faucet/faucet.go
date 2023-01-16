@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"math"
 	"time"
 
 	"go.sia.tech/siad/crypto"
@@ -57,9 +56,9 @@ type (
 		Request(id RequestID) (Request, error)
 		// AddRequest adds a new pending payment request to the store
 		AddRequest(address types.UnlockHash, ipAddress string, amount types.Currency) (RequestID, error)
-		// AmountRequested returns the sum of all requests for the given address and
-		// ip address in the last 24 hours.
-		AmountRequested(address types.UnlockHash, ipAddress string) (types.Currency, error)
+		// Requests returns the sum and count of all requests for the given
+		// address and ip address in the last 24 hours.
+		Requests(address types.UnlockHash, ipAddress string) (types.Currency, int, error)
 		// UnprocessedRequests returns the first n unprocessed requests
 		UnprocessedRequests(limit uint64) ([]Request, error)
 		// ProcessRequests updates the transaction id for the requests and
@@ -72,6 +71,7 @@ type (
 
 	// A Wallet funds and signs transactions.
 	Wallet interface {
+		Balance() (spendable, confirmed types.Currency, err error)
 		FundTransaction(txn *types.Transaction, amount types.Currency) ([]crypto.Hash, func(), error)
 		SignTransaction(txn *types.Transaction, toSign []crypto.Hash, cf types.CoveredFields) error
 	}
@@ -95,25 +95,27 @@ type (
 
 	// A Faucet fulfills payment requests.
 	Faucet struct {
-		maxPerDay types.Currency
+		maxSCPerDay       types.Currency
+		maxRequestsPerday int
 
-		cm    ChainManager
-		tp    TPool
-		w     Wallet
-		log   *log.Logger
+		cm ChainManager
+		tp TPool
+		w  Wallet
+
+		log                 *log.Logger
+		lastConsensusChange time.Time
+
 		close chan struct{}
 
 		store Store
-
-		// process is a channel that is used to signal that the faucet should
-		// process pending requests.
-		process chan struct{}
 	}
 )
 
 var (
-	// ErrRequestExceeded is returned if the amount requested exceeds the maximum
-	ErrRequestExceeded = errors.New("amount requested exceeds max amount per day")
+	// ErrAmountExceeded is returned if the amount requested exceeds the maximum
+	ErrAmountExceeded = errors.New("amount exceeds max amount per day")
+	// ErrCountExceeded is returned if the number of requests exceeds the maximum
+	ErrCountExceeded = errors.New("request count exceeds max requests per day")
 )
 
 // String returns the string representation of a RequestID
@@ -194,20 +196,27 @@ func (f *Faucet) Request(id RequestID) (Request, error) {
 
 // RequestAmount requests an amount of siacoins to be sent to address.
 func (f *Faucet) RequestAmount(address types.UnlockHash, ipAddress string, amount types.Currency) (RequestID, error) {
-	amountRequested, err := f.store.AmountRequested(address, ipAddress)
+	amountRequested, count, err := f.store.Requests(address, ipAddress)
 	if err != nil {
 		return RequestID{}, fmt.Errorf("failed to get amount requested: %w", err)
 	}
 
-	if amountRequested.Add(amount).Cmp(f.maxPerDay) > 0 {
-		return RequestID{}, ErrRequestExceeded
+	// validate the request is not limited
+	if amountRequested.Add(amount).Cmp(f.maxSCPerDay) > 0 {
+		return RequestID{}, ErrAmountExceeded
+	} else if count >= f.maxRequestsPerday {
+		return RequestID{}, ErrCountExceeded
 	}
-
 	return f.store.AddRequest(address, ipAddress, amount)
 }
 
 // ProcessConsensusChange implements modules.ConsensusChangeSubscriber
 func (f *Faucet) ProcessConsensusChange(cc modules.ConsensusChange) {
+	select {
+	case <-f.close: // prevent processing after close
+		return
+	default:
+	}
 	// update existing requests
 	err := f.store.Update(func(tx UpdateTx) error {
 		for _, reverted := range cc.RevertedBlocks {
@@ -227,22 +236,26 @@ func (f *Faucet) ProcessConsensusChange(cc modules.ConsensusChange) {
 	if err != nil {
 		f.log.Printf("failed to process consensus change %v: %v", cc.ID, err)
 	}
-	f.process <- struct{}{}
+	if time.Since(f.lastConsensusChange) > 5*time.Minute {
+		f.lastConsensusChange = time.Now()
+		f.log.Printf("synced to %v (%v)", cc.BlockHeight, cc.ID)
+	}
 }
 
 // New initializes a new faucet.
-func New(cm ChainManager, tp TPool, w Wallet, store Store, maxPerDay types.Currency, debounce time.Duration, log *log.Logger) (*Faucet, error) {
+func New(cm ChainManager, tp TPool, w Wallet, store Store, maxRequestsPerDay int, maxSCPerDay types.Currency, interval time.Duration, log *log.Logger) (*Faucet, error) {
 	f := &Faucet{
 		cm:    cm,
 		tp:    tp,
 		w:     w,
-		log:   log,
 		store: store,
 
-		maxPerDay: maxPerDay,
+		maxSCPerDay:       maxSCPerDay,
+		maxRequestsPerday: maxRequestsPerDay,
 
-		process: make(chan struct{}),
-		close:   make(chan struct{}),
+		log: log,
+
+		close: make(chan struct{}),
 	}
 
 	ccID, err := store.GetLastChange()
@@ -251,28 +264,21 @@ func New(cm ChainManager, tp TPool, w Wallet, store Store, maxPerDay types.Curre
 	}
 
 	go func() {
-		// initialize and immediately stop a new timer to debounce processing
-		t := time.NewTimer(math.MaxInt64)
-		t.Stop()
+		// initialize the processing timer
+		t := time.NewTimer(interval)
 		for {
 			select {
 			case <-f.close: // close received, stop processing
 				return
-			case <-f.process: // block received, reset timer
-				if !t.Stop() {
-					select {
-					case <-t.C:
-					default:
-					}
-				}
-				t.Reset(debounce)
-			case <-t.C: // timer fired, begin processing requests
+			case <-t.C: // timer fired, begin process requests
 				n, err := f.processRequests()
 				if err != nil {
 					f.log.Printf("failed to process requests: %v", err)
 				} else if n > 0 {
-					f.log.Printf("fulfilled %v requests", n)
+					spendable, _, _ := f.w.Balance()
+					f.log.Printf("fulfilled %v requests (remaining balance: %s)", n, spendable.HumanString())
 				}
+				t.Reset(interval) // reset the timer
 			}
 		}
 	}()
