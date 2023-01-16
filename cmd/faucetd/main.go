@@ -139,6 +139,14 @@ var (
 		},
 	}
 
+	seedCmd = &cobra.Command{
+		Use:   "seed",
+		Short: "generates a new wallet seed for use with the faucet. Should not be used while the daemon is running.",
+		Run: func(cmd *cobra.Command, args []string) {
+			log.Println(wallet.NewSeedPhrase())
+		},
+	}
+
 	// distributeCmd is a helper that can be used to create a bunch of UTXOs
 	// in the faucet wallet. Should not be used while the daemon is running.
 	distributeCmd = &cobra.Command{
@@ -288,7 +296,7 @@ func init() {
 	rootCmd.Flags().StringVar(&maxSCPerDayStr, "max-sc", "100SC", "max amount of SC per IP/address per day")
 	rootCmd.Flags().IntVar(&maxRequestsPerDay, "max-requests", 5, "max number of requests per IP/address per day")
 
-	rootCmd.AddCommand(distributeCmd)
+	rootCmd.AddCommand(distributeCmd, seedCmd)
 }
 
 func main() {
