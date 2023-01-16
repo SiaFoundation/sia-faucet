@@ -13,7 +13,7 @@ import (
 	"go.sia.tech/siad/types"
 )
 
-// request statues are used to track the status of a faucet request
+// request statuses are used to track the status of a faucet request
 const (
 	RequestStatusPending   RequestStatus = "pending"
 	RequestStatusBroadcast RequestStatus = "broadcast"

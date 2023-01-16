@@ -36,7 +36,7 @@ jobs:
             type=ref,event=branch
             type=sha,prefix=
             type=semver,pattern={{version}}
-      - uses: docker/build-push-action@v2
+      - uses: docker/build-push-action@v3
         with:
           file: Dockerfile.testnet
           context: .
@@ -50,6 +50,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
+        with:
+          check-latest: true
       - name: Install dependencies
         run: |
           sudo apt install -y gcc-aarch64-linux-gnu
@@ -68,7 +70,7 @@ jobs:
           CC: aarch64-linux-gnu-gcc
         run: |
           go build -tags='netgo testnet' -trimpath -o bin/linux_arm64/ -a -ldflags '-s -w' ./cmd/faucetd
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           name: faucetd-testnet-linux
           path: bin/
@@ -80,6 +82,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
+        with:
+          check-latest: true
       - name: Build amd64
         env:
           CGO_ENABLED: 1
@@ -94,7 +98,7 @@ jobs:
           GOARCH: arm64
         run: |
           go build -tags='netgo testnet' -trimpath -o bin/macos_arm64/ -a -ldflags '-s -w' ./cmd/faucetd
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           name: faucetd-testnet-macos
           path: bin/
@@ -105,6 +109,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
+        with:
+          check-latest: true
       - name: Build amd64
         env:
           CGO_ENABLED: 1
@@ -112,7 +118,7 @@ jobs:
           GOARCH: amd64
         run: |
           go build -tags='netgo testnet' -trimpath -o bin/windows_amd64/ -a -ldflags '-s -w' ./cmd/faucetd
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           name: faucetd-testnet-macos
           path: bin/
