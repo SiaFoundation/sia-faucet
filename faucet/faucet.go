@@ -238,7 +238,7 @@ func (f *Faucet) ProcessConsensusChange(cc modules.ConsensusChange) {
 	}
 	if time.Since(f.lastConsensusChange) > 5*time.Minute {
 		f.lastConsensusChange = time.Now()
-		f.log.Printf("synced to %v (%v)", cc.BlockHeight, cc.ID)
+		f.log.Printf("synced to %v (%v)", cc.BlockHeight, cc.AppliedBlocks[len(cc.AppliedBlocks)-1].ID())
 	}
 }
 
