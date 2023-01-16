@@ -50,8 +50,10 @@ func (a *API) handleCreateRequest(jc jape.Context) {
 		return
 	} else if req.UnlockHash == (types.UnlockHash{}) {
 		jc.Error(errors.New("unlock hash is required"), http.StatusBadRequest)
+		return
 	} else if req.Amount.IsZero() {
 		jc.Error(errors.New("amount is required"), http.StatusBadRequest)
+		return
 	}
 
 	ip := jc.Request.RemoteAddr
@@ -66,6 +68,7 @@ func (a *API) handleCreateRequest(jc jape.Context) {
 	requestID, err := a.faucet.RequestAmount(req.UnlockHash, ip, req.Amount)
 	if errors.Is(err, faucet.ErrCountExceeded) || errors.Is(err, faucet.ErrAmountExceeded) {
 		jc.Error(err, http.StatusTooManyRequests)
+		return
 	} else if err != nil {
 		log.Println("[WARN] unable to create request:", err)
 		jc.Error(errors.New("unable to create request"), http.StatusInternalServerError)
