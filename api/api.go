@@ -77,7 +77,7 @@ func (a *API) handleCreateRequest(jc jape.Context) {
 
 	request, err := a.faucet.Request(requestID)
 	if err != nil { // should never fail
-		log.Println("[WARN] unable to get request:", err)
+		log.Println("[WARN] unable to get created request:", err)
 		jc.Error(errors.New("unable to create request"), http.StatusInternalServerError)
 		return
 	}

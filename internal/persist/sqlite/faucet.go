@@ -35,9 +35,6 @@ func scanRequest(row sqlScanner) (req faucet.Request, err error) {
 		newSqlNullable((*sqlHash)(&req.TransactionID)),
 		newSqlNullable((*sqlHash)(&req.BlockID)),
 		scanTime(&req.Timestamp))
-	if err != nil {
-		return faucet.Request{}, fmt.Errorf("failed to scan request: %v", err)
-	}
 	return
 }
 
