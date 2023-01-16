@@ -249,6 +249,8 @@ var (
 			} else if err := tp.AcceptTransactionSet([]types.Transaction{distributeTxn}); err != nil {
 				log.Fatalln("failed to broadcast transaction:", err)
 			}
+			// give time to actuall broadcast the transaction
+			time.Sleep(2 * time.Minute)
 			log.Println("Broadcast transaction", distributeTxn.ID())
 		},
 	}
