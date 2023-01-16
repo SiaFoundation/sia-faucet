@@ -76,10 +76,14 @@ func (fs *FaucetStore) GetLastChange() (id modules.ConsensusChangeID, err error)
 }
 
 // Request returns the request with the given id
-func (fs *FaucetStore) Request(id faucet.RequestID) (req faucet.Request, err error) {
+func (fs *FaucetStore) Request(id faucet.RequestID) (faucet.Request, error) {
 	row := fs.db.db.QueryRow(`SELECT id, unlock_hash, ip_address, amount, request_status, transaction_id, block_id, date_created 
 FROM faucet_requests WHERE id=$1`, valueHash(id))
-	return scanRequest(row)
+	req, err := scanRequest(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return faucet.Request{}, faucet.ErrNotFound
+	}
+	return req, err
 }
 
 // AddRequest adds a new pending payment request to the store
