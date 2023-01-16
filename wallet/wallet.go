@@ -97,7 +97,7 @@ func (sw *SingleAddressWallet) Balance() (spendable, confirmed types.Currency, e
 	defer sw.mu.Unlock()
 	for _, sco := range outputs {
 		confirmed = confirmed.Add(sco.Value)
-		if !sw.locked[sco.ID] || sw.tpool[sco.ID] {
+		if !sw.locked[sco.ID] && !sw.tpool[sco.ID] {
 			spendable = spendable.Add(sco.Value)
 		}
 	}
@@ -227,7 +227,7 @@ func (sw *SingleAddressWallet) ProcessConsensusChange(cc modules.ConsensusChange
 	err := sw.store.Update(context.Background(), func(tx UpdateTransaction) error {
 		// add new siacoin outputs and remove spent or reverted siacoin outputs
 		for _, diff := range cc.SiacoinOutputDiffs {
-			if diff.SiacoinOutput.UnlockHash != sw.addr {
+			if diff.SiacoinOutput.UnlockHash != sw.addr || diff.SiacoinOutput.Value.IsZero() {
 				continue
 			}
 			if diff.Direction == modules.DiffApply {
