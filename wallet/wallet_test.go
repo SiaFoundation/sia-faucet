@@ -1,6 +1,7 @@
 package wallet_test
 
 import (
+	"context"
 	"crypto/ed25519"
 	"fmt"
 	"path/filepath"
@@ -31,6 +32,25 @@ func (tn *testNode) Close() error {
 	tn.cs.Close()
 	tn.g.Close()
 	return nil
+}
+
+func retry(fn func() error, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	var err error
+	for {
+		select {
+		case <-ctx.Done():
+			if err == nil {
+				return ctx.Err()
+			}
+			return err
+		case <-time.After(10 * time.Millisecond):
+			if err = fn(); err == nil {
+				return nil
+			}
+		}
+	}
 }
 
 func newTestNode(dir string) (*testNode, error) {
@@ -171,14 +191,19 @@ func TestWallet(t *testing.T) {
 	if err := miner.Mine(w.Address(), 1); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(time.Second)
 
-	// check that the wallet's balance is the same
-	_, balance, err = w.Balance()
+	err = retry(func() error {
+		// check that the wallet's balance is the same
+		_, balance, err = w.Balance()
+		if err != nil {
+			return fmt.Errorf("failed to get balance: %w", err)
+		} else if !balance.Equals(expectedBalance) {
+			return fmt.Errorf("expected %v balance, got %v", expectedBalance, balance)
+		}
+		return nil
+	}, 15*time.Second)
 	if err != nil {
 		t.Fatal(err)
-	} else if !balance.Equals(expectedBalance) {
-		t.Fatalf("expected %v balance, got %v", expectedBalance, balance)
 	}
 
 	// check that the wallet has 20 UTXOs
@@ -226,14 +251,20 @@ func TestWallet(t *testing.T) {
 	if err := node1.g.Connect(modules.NetAddress("127.0.0.1:" + node2.g.Address().Port())); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(time.Second)
 
 	// check that the wallet's balance is back to 0
-	_, balance, err = w.Balance()
+	err = retry(func() error {
+		// check that the wallet's balance is the same
+		_, balance, err = w.Balance()
+		if err != nil {
+			return fmt.Errorf("failed to get balance: %w", err)
+		} else if !balance.Equals(types.ZeroCurrency) {
+			return fmt.Errorf("expected %v balance, got %v", expectedBalance, balance)
+		}
+		return nil
+	}, 15*time.Second)
 	if err != nil {
 		t.Fatal(err)
-	} else if !balance.Equals(types.ZeroCurrency) {
-		t.Fatalf("expected zero balance, got %v", balance)
 	}
 
 	// check that the all utxos have been deleted
