@@ -6,7 +6,7 @@ WORKDIR /faucetd
 
 # Copy and build binary.
 COPY . .
-RUN go build -o bin/ -tags='netgo' -trimpath -a -ldflags '-linkmode external -extldflags "-static"'  ./cmd/faucetd
+RUN go build -o bin/ -tags='testnet netgo' -trimpath -a -ldflags '-linkmode external -extldflags "-static"'  ./cmd/faucetd
 
 # Build image that will be used to run faucetd.
 FROM alpine
