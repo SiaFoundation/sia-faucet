@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"strings"
 
 	"go.sia.tech/faucet/faucet"
 	"go.sia.tech/jape"
@@ -49,7 +50,11 @@ func (a *API) handleCreateRequest(jc jape.Context) {
 
 	ip := jc.Request.RemoteAddr
 	if forwardedFor := jc.Request.Header.Get("X-Forwarded-For"); len(forwardedFor) != 0 {
-		ip = forwardedFor
+		addresses := strings.Split(forwardedFor, ",")
+		ip = strings.TrimSpace(addresses[0])
+	}
+	if host, _, err := net.SplitHostPort(ip); err == nil { // remove the port if present
+		ip = host
 	}
 
 	requestID, err := a.faucet.RequestAmount(req.UnlockHash, ip, req.Amount)
