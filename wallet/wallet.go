@@ -183,6 +183,12 @@ func (sw *SingleAddressWallet) SignTransaction(txn *types.Transaction, toSign []
 
 // ReceiveUpdatedUnconfirmedTransactions implements modules.TransactionPoolSubscriber.
 func (sw *SingleAddressWallet) ReceiveUpdatedUnconfirmedTransactions(diff *modules.TransactionPoolDiff) {
+	select {
+	case <-sw.close: // prevent processing after wallet has been closed
+		return
+	default:
+	}
+
 	sw.mu.Lock()
 	defer sw.mu.Unlock()
 
@@ -211,6 +217,12 @@ func (sw *SingleAddressWallet) ReceiveUpdatedUnconfirmedTransactions(diff *modul
 
 // ProcessConsensusChange implements modules.ConsensusSetSubscriber.
 func (sw *SingleAddressWallet) ProcessConsensusChange(cc modules.ConsensusChange) {
+	select {
+	case <-sw.close: // prevent processing after wallet has been closed
+		return
+	default:
+	}
+
 	// begin a database transaction to update the wallet state
 	err := sw.store.Update(context.Background(), func(tx UpdateTransaction) error {
 		// add new siacoin outputs and remove spent or reverted siacoin outputs

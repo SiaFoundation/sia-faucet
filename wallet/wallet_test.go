@@ -131,6 +131,7 @@ func TestWallet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer w.Close()
 
 	_, balance, err := w.Balance()
 	if err != nil {
