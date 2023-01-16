@@ -126,7 +126,7 @@ var (
 
 			go func() {
 				if err := api.Serve(l); err != nil {
-					log.Fatalln("failed to start API server:", err)
+					log.Println("failed to start API server:", err)
 				}
 			}()
 
@@ -143,7 +143,7 @@ var (
 	// in the faucet wallet. Should not be used while the daemon is running.
 	distributeCmd = &cobra.Command{
 		Use:   "distribute [count] [amount]",
-		Short: "redistributes wallet funds; creating [count] UTXOs of [amount] SC",
+		Short: "redistributes wallet funds; creating [count] UTXOs of [amount] SC. Should not be used while the daemon is running.",
 		Args:  cobra.ExactArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			hastings, err := types.ParseCurrency(args[1])
