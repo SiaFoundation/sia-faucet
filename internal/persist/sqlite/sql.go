@@ -81,6 +81,7 @@ func (s *Store) transaction(fn func(txn) error) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
+	defer tx.Rollback()
 	if err := fn(tx); err != nil {
 		if err := tx.Rollback(); err != nil {
 			return fmt.Errorf("failed to rollback transaction: %w", err)
@@ -105,6 +106,7 @@ func (s *Store) exclusiveTransaction(fn func(txn) error) error {
 	if err != nil {
 		return fmt.Errorf("failed to get connection: %w", err)
 	}
+	defer conn.Close()
 
 	if _, err := conn.ExecContext(ctx, "BEGIN EXCLUSIVE"); err != nil {
 		return fmt.Errorf("failed to begin exclusive transaction: %w", err)

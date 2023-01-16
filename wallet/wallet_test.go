@@ -34,20 +34,24 @@ func (tn *testNode) Close() error {
 	return nil
 }
 
-func retry(fn func() error, timeout time.Duration) error {
+func retry(fn func() error, timeout time.Duration) (err error) {
+	if err = fn(); err == nil {
+		return nil
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	var err error
 	for {
 		select {
 		case <-ctx.Done():
+			// if err is somehow nil, return the timeout error
 			if err == nil {
-				return ctx.Err()
+				err = ctx.Err()
 			}
-			return err
+			return
 		case <-time.After(10 * time.Millisecond):
 			if err = fn(); err == nil {
-				return nil
+				return
 			}
 		}
 	}
@@ -120,6 +124,8 @@ func TestWallet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer db.Close()
+
 	walletStore := sqlite.NewWalletStore(db)
 	w, err := wallet.NewSingleAddressWallet(privKey, cm, node1.tp, walletStore)
 	if err != nil {
