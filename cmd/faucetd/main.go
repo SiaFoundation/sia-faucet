@@ -208,9 +208,8 @@ var (
 			time.Sleep(time.Minute)
 			if len(g.Peers()) == 0 {
 				log.Fatalln("no peers connected")
-			} else {
-				log.Printf("connected to %v peers", len(g.Peers()))
 			}
+			log.Printf("Gateway connected to %v peers", len(g.Peers()))
 
 			tp, err := transactionpool.New(cs, g, filepath.Join(dir, "tpool"))
 			if err != nil {
