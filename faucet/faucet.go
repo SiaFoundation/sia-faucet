@@ -238,7 +238,7 @@ func (f *Faucet) ProcessConsensusChange(cc modules.ConsensusChange) {
 	}
 	if time.Since(f.lastConsensusChange) > 5*time.Minute {
 		f.lastConsensusChange = time.Now()
-		f.log.Printf("synced to %v (%v)", cc.BlockHeight, cc.AppliedBlocks[len(cc.AppliedBlocks)-1].ID())
+		f.log.Printf("faucet synced to block %v at height %v", cc.AppliedBlocks[len(cc.AppliedBlocks)-1].ID(), cc.BlockHeight)
 	}
 }
 
@@ -253,7 +253,8 @@ func New(cm ChainManager, tp TPool, w Wallet, store Store, maxRequestsPerDay int
 		maxSCPerDay:       maxSCPerDay,
 		maxRequestsPerday: maxRequestsPerDay,
 
-		log: log,
+		log:                 log,
+		lastConsensusChange: time.Now(),
 
 		close: make(chan struct{}),
 	}
