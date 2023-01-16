@@ -69,8 +69,8 @@ func (a *API) handleCreateRequest(jc jape.Context) {
 // Serve serves the API on the provided listener.
 func (a *API) Serve(l net.Listener) error {
 	return http.Serve(l, jape.Mux(map[string]jape.Handler{
-		"GET /api/:id":      a.handleGetRequest,
-		"POST /api/request": a.handleCreateRequest,
+		"GET /api/request/:id": a.handleGetRequest,
+		"POST /api/request":    a.handleCreateRequest,
 	}))
 }
 
