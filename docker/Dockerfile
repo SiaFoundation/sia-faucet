@@ -6,10 +6,10 @@ WORKDIR /faucetd
 
 # Copy and build binary.
 COPY . .
-RUN go build -o bin/ -tags='netgo testnet' -trimpath -a ./cmd/faucetd
+RUN go build -o bin/ -tags='netgo' -trimpath -a -ldflags '-linkmode external -extldflags "-static"'  ./cmd/faucetd
 
 # Build image that will be used to run faucetd.
-FROM debian:bookworm-slim
+FROM alpine
 LABEL maintainer="The Sia Foundation <info@sia.tech>"
 
 ENV PUID=0
@@ -26,4 +26,4 @@ EXPOSE 9981/tcp
 
 USER ${PUID}:${PGID}
 
-ENTRYPOINT [ "faucetd", "-d", "./data", "-http", ":8080" ]
+ENTRYPOINT [ "faucetd", "--dir", "/data", "--http", ":8080" ]
