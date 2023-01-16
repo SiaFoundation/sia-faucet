@@ -166,11 +166,18 @@ func TestWallet(t *testing.T) {
 
 	// check the wallet's reported balance
 	expectedBalance := types.CalculateCoinbase(1)
-	_, balance, err = w.Balance()
+	err = retry(func() error {
+		// check that the wallet's balance is the same
+		_, balance, err = w.Balance()
+		if err != nil {
+			return fmt.Errorf("failed to get balance: %w", err)
+		} else if !balance.Equals(expectedBalance) {
+			return fmt.Errorf("expected %v balance, got %v", expectedBalance, balance)
+		}
+		return nil
+	}, 15*time.Second)
 	if err != nil {
 		t.Fatal(err)
-	} else if !balance.Equals(expectedBalance) {
-		t.Fatalf("expected %v balance, got %v", expectedBalance, balance)
 	}
 
 	// check that the wallet store only has a single UTXO
