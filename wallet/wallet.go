@@ -71,6 +71,12 @@ type (
 	}
 )
 
+var (
+	// ErrNotEnoughFunds is returned when there are not enough funds to fund a
+	// transaction.
+	ErrNotEnoughFunds = errors.New("not enough funds")
+)
+
 // Close closes the wallet
 func (sw *SingleAddressWallet) Close() error {
 	select {
@@ -132,7 +138,7 @@ func (sw *SingleAddressWallet) FundTransaction(txn *types.Transaction, amount ty
 		}
 	}
 	if inputSum.Cmp(amount) < 0 {
-		return nil, nil, errors.New("insufficient balance")
+		return nil, nil, ErrNotEnoughFunds
 	} else if inputSum.Cmp(amount) > 0 {
 		txn.SiacoinOutputs = append(txn.SiacoinOutputs, types.SiacoinOutput{
 			Value:      inputSum.Sub(amount),
