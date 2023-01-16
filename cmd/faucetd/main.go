@@ -205,6 +205,12 @@ var (
 
 			tip := cm.Tip()
 			log.Printf("Synced to %v (%v)", tip.Index.ID, tip.Index.Height)
+			time.Sleep(time.Minute)
+			if len(g.Peers()) == 0 {
+				log.Fatalln("no peers connected")
+			} else {
+				log.Printf("connected to %v peers", len(g.Peers()))
+			}
 
 			tp, err := transactionpool.New(cs, g, filepath.Join(dir, "tpool"))
 			if err != nil {
@@ -249,9 +255,25 @@ var (
 			} else if err := tp.AcceptTransactionSet([]types.Transaction{distributeTxn}); err != nil {
 				log.Fatalln("failed to broadcast transaction:", err)
 			}
-			// give time to actuall broadcast the transaction
-			time.Sleep(2 * time.Minute)
 			log.Println("Broadcast transaction", distributeTxn.ID())
+			log.Println("Waiting for transaction to be confirmed...")
+			// wait for the transaction to be confirmed
+			ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
+			defer cancel()
+			for {
+				select {
+				case <-ctx.Done():
+					log.Fatalln("timed out waiting for transaction to be confirmed")
+				case <-time.After(time.Second):
+					ok, err := tp.TransactionConfirmed(distributeTxn.ID())
+					if err != nil {
+						log.Fatalln("failed to check transaction status:", err)
+					} else if ok {
+						log.Println("Transaction confirmed")
+						return
+					}
+				}
+			}
 		},
 	}
 )

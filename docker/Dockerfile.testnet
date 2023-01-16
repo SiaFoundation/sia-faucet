@@ -26,4 +26,4 @@ EXPOSE 9881/tcp
 
 USER ${PUID}:${PGID}
 
-ENTRYPOINT [ "faucetd", "--dir", "/data", "-http", ":8080" ]
+ENTRYPOINT [ "faucetd", "--dir", "/data", "--http", ":8080" ]
