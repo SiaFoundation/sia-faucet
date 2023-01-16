@@ -2,6 +2,8 @@ package api
 
 import (
 	"errors"
+	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -30,8 +32,12 @@ func (a *API) handleGetRequest(jc jape.Context) {
 		return
 	}
 	request, err := a.faucet.Request(requestID)
-	if err != nil {
-		jc.Error(err, http.StatusNotFound)
+	if errors.Is(err, faucet.ErrNotFound) {
+		jc.Error(fmt.Errorf("unable to find request %v", requestID), http.StatusNotFound)
+		return
+	} else if err != nil {
+		log.Println("[WARN] unable to get request:", err)
+		jc.Error(errors.New("unable to get request"), http.StatusInternalServerError)
 		return
 	}
 	jc.Encode(request)
@@ -58,13 +64,17 @@ func (a *API) handleCreateRequest(jc jape.Context) {
 	}
 
 	requestID, err := a.faucet.RequestAmount(req.UnlockHash, ip, req.Amount)
-	if err != nil {
-		jc.Error(err, http.StatusInternalServerError)
+	if errors.Is(err, faucet.ErrCountExceeded) || errors.Is(err, faucet.ErrAmountExceeded) {
+		jc.Error(err, http.StatusTooManyRequests)
+	} else if err != nil {
+		log.Println("[WARN] unable to create request:", err)
+		jc.Error(errors.New("unable to create request"), http.StatusInternalServerError)
 		return
 	}
 
 	request, err := a.faucet.Request(requestID)
-	if err != nil {
+	if err != nil { // should never fail
+		log.Println("[WARN] unable to get request:", err)
 		jc.Error(err, http.StatusInternalServerError)
 		return
 	}
