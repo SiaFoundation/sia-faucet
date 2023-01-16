@@ -246,6 +246,12 @@ func TestRequestProcessing(t *testing.T) {
 	if err := fs.ProcessRequests([]faucet.RequestID{firstID, secondID}, txnID); err != nil {
 		t.Fatal(err)
 	}
+	err = fs.Update(func(tx faucet.UpdateTx) error {
+		return tx.ApplyTransactionBlock(txnID, blockID)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// check that the status, transaction ID, and block are correct
 	request, err = fs.Request(firstID)

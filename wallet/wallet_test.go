@@ -33,16 +33,6 @@ func (tn *testNode) Close() error {
 	return nil
 }
 
-func TestTEst(t *testing.T) {
-	t.Log(types.SiacoinPrecision.Mul64(100).String())
-	t.Log(types.SiacoinPrecision.Mul64(200).String())
-	t.Log(types.SiaPublicKey{
-		Algorithm: types.SignatureEd25519,
-		Key:       make([]byte, 32),
-	}.String())
-	t.Fail()
-}
-
 func newTestNode(dir string) (*testNode, error) {
 	g, err := gateway.New(":0", false, filepath.Join(dir, "gateway"))
 	if err != nil {
