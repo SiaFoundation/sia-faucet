@@ -274,18 +274,24 @@ func New(cm ChainManager, tp TPool, w Wallet, store Store, maxRequestsPerDay int
 			case <-f.close: // close received, stop processing
 				return
 			case <-t.C: // timer fired, begin processing request queue
-				// batch requests until either the queue or wallet are empty
-				n, err := f.processRequests(50)
-				if err != nil { // stop processing if an error occurred
-					f.log.Printf("unable to process requests: %v", err)
-					continue
-				} else if n == 0 { // don't log if no requests were processed
-					continue
+				err := func() error {
+					// batch requests until either the queue or wallet are empty
+					n, err := f.processRequests(50)
+					if err != nil { // stop processing if an error occurred
+						return fmt.Errorf("failed to process requests: %w", err)
+					} else if n == 0 { // don't log if no requests were processed
+						return nil
+					}
+					// log the number of requests processed and remaining balance
+					spendable, _, _ := f.w.Balance()
+					f.log.Printf("fulfilled %v requests (remaining balance: %s)", n, spendable.HumanString())
+					return nil
+				}()
+				if err != nil {
+					f.log.Printf("failed to process requests: %v", err)
 				}
-				// log the number of requests processed and remaining balance
-				spendable, _, _ := f.w.Balance()
-				f.log.Printf("fulfilled %v requests (remaining balance: %s)", n, spendable.HumanString())
 				t.Reset(interval) // reset the timer
+
 			}
 		}
 	}()
