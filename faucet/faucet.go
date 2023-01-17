@@ -291,7 +291,6 @@ func New(cm ChainManager, tp TPool, w Wallet, store Store, maxRequestsPerDay int
 					f.log.Printf("failed to process requests: %v", err)
 				}
 				t.Reset(interval) // reset the timer
-
 			}
 		}
 	}()
