@@ -4,6 +4,7 @@ go 1.19
 
 require (
 	github.com/mattn/go-sqlite3 v1.14.16
+	github.com/rs/cors v1.8.3
 	github.com/spf13/cobra v1.0.0
 	gitlab.com/NebulousLabs/fastrand v0.0.0-20181126182046-603482d69e40
 	go.sia.tech/jape v0.5.0

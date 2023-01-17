@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/rs/cors"
 	"go.sia.tech/faucet/faucet"
 	"go.sia.tech/jape"
 	"go.sia.tech/siad/types"
@@ -90,20 +91,12 @@ func (a *API) Serve(l net.Listener) error {
 		"GET  /api/request/:id": a.handleGetRequest,
 		"POST /api/request":     a.handleCreateRequest,
 	})
-	// respond to CORS requests
-	router.HandleOPTIONS = true
-	router.GlobalOPTIONS = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Access-Control-Request-Method") != "" {
-			// Set CORS headers
-			header := w.Header()
-			header.Set("Access-Control-Allow-Methods", header.Get("Allow"))
-			header.Set("Access-Control-Allow-Origin", "*")
-		}
-
-		// Adjust status code to 204
-		w.WriteHeader(http.StatusNoContent)
-	})
-	return http.Serve(l, router)
+	handler := cors.New(cors.Options{
+		AllowedOrigins: []string{"*"},
+		AllowedMethods: []string{http.MethodGet, http.MethodPost},
+		AllowedHeaders: []string{"Content-Type"},
+	}).Handler(router)
+	return http.Serve(l, handler)
 }
 
 // New initializes an API router.
