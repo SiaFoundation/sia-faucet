@@ -24,12 +24,16 @@ import (
 )
 
 var (
-	httpAddr          string
-	gatewayAddr       string
-	dir               string
+	// global flags
+	httpAddr    string
+	gatewayAddr string
+	dir         string
+	bootstrap   bool
+
+	// faucet flags
 	maxSCPerDayStr    string
 	maxRequestsPerDay int
-	bootstrap         bool
+	processInterval   int64
 )
 
 var (
@@ -37,6 +41,11 @@ var (
 		Use:   "faucetd",
 		Short: "Sia faucet daemon",
 		Run: func(cmd *cobra.Command, args []string) {
+			interval := time.Duration(processInterval) * time.Second
+			if interval < 0 {
+				log.Fatalln("--interval must be positive")
+			}
+
 			walletRecoveryPhrase := os.Getenv("FAUCETD_WALLET_SEED")
 			if len(walletRecoveryPhrase) == 0 {
 				log.Fatalln("FAUCETD_WALLET_SEED not set")
@@ -57,12 +66,12 @@ var (
 				log.Println("failed to conver to currency:", err)
 			}
 
+			// start the necessary siad modules
 			g, err := gateway.New(gatewayAddr, bootstrap, filepath.Join(dir, "gateway"))
 			if err != nil {
 				log.Fatalln("failed to create gateway:", err)
 			}
 			defer g.Close()
-
 			log.Println("gateway started on:", g.Address())
 
 			cs, errCh := mconsensus.New(g, bootstrap, filepath.Join(dir, "consensus"))
@@ -100,6 +109,7 @@ var (
 			}
 			defer db.Close()
 
+			// initialize the wallet
 			ws := sqlite.NewWalletStore(db)
 			w, err := wallet.NewSingleAddressWallet(walletKey, cm, tp, ws)
 			if err != nil {
@@ -109,33 +119,34 @@ var (
 
 			log.Println("Wallet Address:", w.Address())
 
+			// initialize the faucet
 			fs := sqlite.NewFaucetStore(db)
-			f, err := faucet.New(cm, tp, w, fs, maxRequestsPerDay, maxSCPerDay, 5*time.Minute, log.Default())
+			log.Printf("faucet started with interval %s", interval)
+			f, err := faucet.New(cm, tp, w, fs, maxRequestsPerDay, maxSCPerDay, interval, log.Default())
 			if err != nil {
 				log.Fatalln("failed to create faucet:", err)
 			}
 			defer f.Close()
 
+			// start the listener
 			l, err := net.Listen("tcp", httpAddr)
 			if err != nil {
 				log.Fatalln("failed to listen on http address:", err)
 			}
 			defer l.Close()
+			log.Println("faucetd API started on", l.Addr().String())
 
+			// start the API handler in a separate goroutine
 			api := api.New(f)
-
 			go func() {
 				if err := api.Serve(l); err != nil {
 					log.Println("failed to start API server:", err)
 				}
 			}()
 
-			log.Println("faucetd API started on", l.Addr().String())
-
-			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
-			defer cancel()
-
-			<-ctx.Done()
+			ch := make(chan os.Signal, 1)
+			signal.Notify(ch, os.Interrupt)
+			<-ch
 		},
 	}
 
@@ -295,6 +306,7 @@ func init() {
 
 	rootCmd.Flags().StringVar(&maxSCPerDayStr, "max-sc", "100SC", "max amount of SC per IP/address per day")
 	rootCmd.Flags().IntVar(&maxRequestsPerDay, "max-requests", 5, "max number of requests per IP/address per day")
+	rootCmd.Flags().Int64Var(&processInterval, "interval", 120, "interval, in seconds, to process requests")
 
 	rootCmd.AddCommand(distributeCmd, seedCmd)
 }
