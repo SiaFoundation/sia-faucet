@@ -86,10 +86,24 @@ func (a *API) handleCreateRequest(jc jape.Context) {
 
 // Serve serves the API on the provided listener.
 func (a *API) Serve(l net.Listener) error {
-	return http.Serve(l, jape.Mux(map[string]jape.Handler{
-		"GET /api/request/:id": a.handleGetRequest,
-		"POST /api/request":    a.handleCreateRequest,
-	}))
+	router := jape.Mux(map[string]jape.Handler{
+		"GET  /api/request/:id": a.handleGetRequest,
+		"POST /api/request":     a.handleCreateRequest,
+	})
+	// respond to CORS requests
+	router.HandleOPTIONS = true
+	router.GlobalOPTIONS = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Access-Control-Request-Method") != "" {
+			// Set CORS headers
+			header := w.Header()
+			header.Set("Access-Control-Allow-Methods", header.Get("Allow"))
+			header.Set("Access-Control-Allow-Origin", "*")
+		}
+
+		// Adjust status code to 204
+		w.WriteHeader(http.StatusNoContent)
+	})
+	return http.Serve(l, router)
 }
 
 // New initializes an API router.
