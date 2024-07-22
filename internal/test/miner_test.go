@@ -238,14 +238,12 @@ func TestMining(t *testing.T) {
 		release, err := w.FundAndSignTransaction(&txn, amount)
 		if err != nil {
 			t.Fatal(err)
-		}
-		defer release()
-
-		if err := tp.AcceptTransactionSet([]types.Transaction{txn}); err != nil {
+		} else if err := tp.AcceptTransactionSet([]types.Transaction{txn}); err != nil {
 			buf, _ := json.MarshalIndent(txn, "", "  ")
 			t.Log(string(buf))
 			t.Fatalf("failed to accept transaction %v: %v", i, err)
 		}
+		release()
 
 		added[i] = txn.ID()
 	}

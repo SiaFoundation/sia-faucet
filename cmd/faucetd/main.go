@@ -48,7 +48,7 @@ var (
 			}
 
 			walletRecoveryPhrase := os.Getenv("FAUCETD_WALLET_SEED")
-			if len(walletRecoveryPhrase) == 0 {
+			if walletRecoveryPhrase == "" {
 				log.Fatalln("FAUCETD_WALLET_SEED not set")
 			}
 
@@ -192,7 +192,7 @@ var (
 			}
 
 			walletRecoveryPhrase := os.Getenv("FAUCETD_WALLET_SEED")
-			if len(walletRecoveryPhrase) == 0 {
+			if walletRecoveryPhrase == "" {
 				log.Fatalln("FAUCETD_WALLET_SEED not set")
 			}
 

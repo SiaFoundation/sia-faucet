@@ -58,7 +58,7 @@ func (a *API) handleCreateRequest(jc jape.Context) {
 	}
 
 	ip := jc.Request.RemoteAddr
-	if forwardedFor := jc.Request.Header.Get("X-Forwarded-For"); len(forwardedFor) != 0 {
+	if forwardedFor := jc.Request.Header.Get("X-Forwarded-For"); forwardedFor != "" {
 		addresses := strings.Split(forwardedFor, ",")
 		ip = strings.TrimSpace(addresses[0])
 	}
