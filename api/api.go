@@ -88,8 +88,8 @@ func (a *API) handleCreateRequest(jc jape.Context) {
 // Serve serves the API on the provided listener.
 func (a *API) Serve(l net.Listener) error {
 	router := jape.Mux(map[string]jape.Handler{
-		"GET  /request/:id": a.handleGetRequest,
-		"POST /request":     a.handleCreateRequest,
+		"GET  /:id": a.handleGetRequest,
+		"POST /":    a.handleCreateRequest,
 	})
 	handler := cors.New(cors.Options{
 		AllowedOrigins: []string{"*"},
