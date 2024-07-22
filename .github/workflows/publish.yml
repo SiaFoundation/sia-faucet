@@ -17,15 +17,15 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v3
-      - uses: docker/setup-qemu-action@v2
-      - uses: docker/setup-buildx-action@v2
-      - uses: docker/login-action@v2
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/metadata-action@v4
+      - uses: docker/metadata-action@v5
         name: generate tags
         id: meta
         with:
@@ -34,89 +34,10 @@ jobs:
             type=ref,event=branch
             type=sha,prefix=
             type=semver,pattern={{version}}
-      - uses: docker/build-push-action@v3
+      - uses: docker/build-push-action@v5
         with:
           file: ./docker/Dockerfile
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-  build-linux:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
-        with:
-          go-version: 'stable'
-      - name: Install dependencies
-        run: |
-          sudo apt install -y gcc-aarch64-linux-gnu
-      - name: Build amd64
-        env:
-          CGO_ENABLED: 1
-          GOOS: linux
-          GOARCH: amd64
-        run: |
-          go build -trimpath -o bin/linux_amd64/ -a -ldflags '-s -w' ./cmd/faucetd
-      - name: Build arm64
-        env:
-          CGO_ENABLED: 1
-          GOOS: linux
-          GOARCH: arm64
-          CC: aarch64-linux-gnu-gcc
-        run: |
-          go build -trimpath -o bin/linux_arm64/ -a -ldflags '-s -w' ./cmd/faucetd
-      - uses: actions/upload-artifact@v3
-        with:
-          name: faucetd-linux
-          path: bin/
-          retention-days: 30
-  build-mac:
-    runs-on: macos-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
-        with:
-          go-version: 'stable'
-      - name: Build amd64
-        env:
-          CGO_ENABLED: 1
-          GOOS: darwin
-          GOARCH: amd64
-        run: |
-          go build -trimpath -o bin/macos_amd64/ -a -ldflags '-s -w' ./cmd/faucetd
-      - name: Build arm64
-        env:
-          CGO_ENABLED: 1
-          GOOS: darwin
-          GOARCH: arm64
-        run: |
-          go build -trimpath -o bin/macos_arm64/ -a -ldflags '-s -w' ./cmd/faucetd
-      - uses: actions/upload-artifact@v3
-        with:
-          name: faucetd-macos
-          path: bin/
-  build-windows:
-    permissions:
-      contents: read
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
-        with:
-          go-version: 'stable'
-      - name: Build amd64
-        env:
-          CGO_ENABLED: 1
-          GOOS: windows
-          GOARCH: amd64
-        run: |
-          go build -trimpath -o bin/windows_amd64/ -a -ldflags '-s -w' ./cmd/faucetd
-      - uses: actions/upload-artifact@v3
-        with:
-          name: faucetd-macos
-          path: bin/
