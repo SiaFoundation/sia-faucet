@@ -1,15 +1,18 @@
 module go.sia.tech/faucet
 
-go 1.19
+go 1.21.8
+
+toolchain go1.21.12
 
 require (
 	github.com/mattn/go-sqlite3 v1.14.16
 	github.com/rs/cors v1.8.3
 	github.com/spf13/cobra v1.0.0
 	gitlab.com/NebulousLabs/fastrand v0.0.0-20181126182046-603482d69e40
+	go.sia.tech/coreutils v0.2.1
 	go.sia.tech/jape v0.5.0
 	go.sia.tech/siad v1.5.10-0.20230114034931-004f2ea4bf09
-	golang.org/x/crypto v0.5.0
+	golang.org/x/crypto v0.25.0
 	lukechampine.com/frand v1.4.2
 )
 
@@ -36,7 +39,11 @@ require (
 	gitlab.com/NebulousLabs/ratelimit v0.0.0-20200811080431-99b8f0768b2e // indirect
 	gitlab.com/NebulousLabs/siamux v0.0.2-0.20220630142132-142a1443a259 // indirect
 	gitlab.com/NebulousLabs/threadgroup v0.0.0-20200608151952-38921fbef213 // indirect
-	golang.org/x/net v0.5.0 // indirect
-	golang.org/x/sys v0.4.0 // indirect
-	golang.org/x/text v0.6.0 // indirect
+	go.sia.tech/core v0.4.1 // indirect
+	go.sia.tech/mux v1.2.0 // indirect
+	go.uber.org/multierr v1.10.0 // indirect
+	go.uber.org/zap v1.27.0 // indirect
+	golang.org/x/net v0.21.0 // indirect
+	golang.org/x/sys v0.22.0 // indirect
+	golang.org/x/text v0.16.0 // indirect
 )

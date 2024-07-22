@@ -17,6 +17,7 @@ import (
 	"go.sia.tech/faucet/faucet"
 	"go.sia.tech/faucet/internal/persist/sqlite"
 	"go.sia.tech/faucet/wallet"
+	"go.sia.tech/siad/modules"
 	mconsensus "go.sia.tech/siad/modules/consensus"
 	"go.sia.tech/siad/modules/gateway"
 	"go.sia.tech/siad/modules/transactionpool"
@@ -73,6 +74,12 @@ var (
 			}
 			defer g.Close()
 			log.Println("gateway started on:", g.Address())
+
+			go func() {
+				for _, peer := range peers {
+					g.Connect(modules.NetAddress(peer))
+				}
+			}()
 
 			cs, errCh := mconsensus.New(g, bootstrap, filepath.Join(dir, "consensus"))
 			select {
