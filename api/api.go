@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/rs/cors"
 	"go.sia.tech/faucet/faucet"
 	"go.sia.tech/jape"
 	"go.sia.tech/siad/types"
@@ -87,16 +86,10 @@ func (a *API) handleCreateRequest(jc jape.Context) {
 
 // Serve serves the API on the provided listener.
 func (a *API) Serve(l net.Listener) error {
-	router := jape.Mux(map[string]jape.Handler{
+	return http.Serve(l, jape.Mux(map[string]jape.Handler{
 		"GET  /:id": a.handleGetRequest,
 		"POST /":    a.handleCreateRequest,
-	})
-	handler := cors.New(cors.Options{
-		AllowedOrigins: []string{"*"},
-		AllowedMethods: []string{http.MethodGet, http.MethodPost},
-		AllowedHeaders: []string{"Content-Type"},
-	}).Handler(router)
-	return http.Serve(l, handler)
+	}))
 }
 
 // New initializes an API router.
