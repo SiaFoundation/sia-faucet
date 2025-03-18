@@ -1,6 +1,5 @@
 # Helper image to build faucetd.
-FROM golang AS builder
-LABEL maintainer="The Sia Foundation <info@sia.tech>"
+FROM golang:1.24 AS builder
 
 WORKDIR /faucetd
 
@@ -22,8 +21,7 @@ COPY --from=builder /faucetd/bin/faucetd /usr/bin/
 VOLUME [ "/data" ]
 
 EXPOSE 8080/tcp
-EXPOSE 9981/tcp
 
 USER ${PUID}:${PGID}
 
-ENTRYPOINT [ "faucetd", "--dir", "/data", "--http", ":8080" ]
+ENTRYPOINT [ "faucetd", "--dir", "/data" ]

@@ -8,24 +8,26 @@ import (
 	"net/http"
 	"strings"
 
+	"go.sia.tech/core/types"
 	"go.sia.tech/faucet/faucet"
 	"go.sia.tech/jape"
-	"go.sia.tech/siad/types"
+	"go.uber.org/zap"
 )
 
 type (
 	reqCreateRequest struct {
-		UnlockHash types.UnlockHash `json:"unlockHash"`
-		Amount     types.Currency   `json:"amount"`
+		UnlockHash types.Address  `json:"unlockHash"`
+		Amount     types.Currency `json:"amount"`
 	}
 
 	// An API routes requests to a faucet
-	API struct {
+	api struct {
 		faucet *faucet.Faucet
+		log    *zap.Logger
 	}
 )
 
-func (a *API) handleGetRequest(jc jape.Context) {
+func (a *api) handleGetRequest(jc jape.Context) {
 	var requestID faucet.RequestID
 	if err := requestID.UnmarshalText([]byte(jc.PathParam("id"))); err != nil {
 		jc.Error(err, http.StatusBadRequest)
@@ -43,12 +45,13 @@ func (a *API) handleGetRequest(jc jape.Context) {
 	jc.Encode(request)
 }
 
-func (a *API) handleCreateRequest(jc jape.Context) {
+func (a *api) handleCreateRequest(jc jape.Context) {
+	log := a.log.Named("handleCreateRequest").With(zap.String("ip", jc.Request.RemoteAddr))
 	var req reqCreateRequest
 	if err := jc.Decode(&req); err != nil {
 		jc.Error(err, http.StatusBadRequest)
 		return
-	} else if req.UnlockHash == (types.UnlockHash{}) {
+	} else if req.UnlockHash == (types.Address{}) {
 		jc.Error(errors.New("unlock hash is required"), http.StatusBadRequest)
 		return
 	} else if req.Amount.IsZero() {
@@ -70,31 +73,28 @@ func (a *API) handleCreateRequest(jc jape.Context) {
 		jc.Error(err, http.StatusTooManyRequests)
 		return
 	} else if err != nil {
-		log.Println("[WARN] unable to create request:", err)
+		log.Warn("unable to create request", zap.Error(err))
 		jc.Error(errors.New("unable to create request"), http.StatusInternalServerError)
 		return
 	}
 
 	request, err := a.faucet.Request(requestID)
 	if err != nil { // should never fail
-		log.Println("[WARN] unable to get created request:", err)
+		log.Error("unable to get request", zap.Error(err))
 		jc.Error(errors.New("unable to create request"), http.StatusInternalServerError)
 		return
 	}
 	jc.Encode(request)
 }
 
-// Serve serves the API on the provided listener.
-func (a *API) Serve(l net.Listener) error {
-	return http.Serve(l, jape.Mux(map[string]jape.Handler{
+// New initializes an API router.
+func New(f *faucet.Faucet, log *zap.Logger) http.Handler {
+	a := &api{
+		faucet: f,
+		log:    log,
+	}
+	return jape.Mux(map[string]jape.Handler{
 		"GET  /:id": a.handleGetRequest,
 		"POST /":    a.handleCreateRequest,
-	}))
-}
-
-// New initializes an API router.
-func New(f *faucet.Faucet) *API {
-	return &API{
-		faucet: f,
-	}
+	})
 }

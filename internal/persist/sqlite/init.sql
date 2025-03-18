@@ -3,17 +3,6 @@
 	this file and a migration added to migrations.go
 */
 
-CREATE TABLE wallet_utxos (
-	id TEXT PRIMARY KEY,
-	amount TEXT NOT NULL,
-	unlock_hash TEXT NOT NULL
-);
-
-CREATE TABLE wallet_settings (
-	id INT PRIMARY KEY NOT NULL DEFAULT 0 CHECK (id = 0), -- enforce a single row
-	last_processed_change TEXT NOT NULL DEFAULT ""
-);
-
 CREATE TABLE faucet_requests (
 	id TEXT PRIMARY KEY,
 	ip_address TEXT NOT NULL,
@@ -25,11 +14,6 @@ CREATE TABLE faucet_requests (
 	date_created UNSIGNED BIG INT NOT NULL
 );
 CREATE INDEX faucet_requests_unlock_hash_ip ON faucet_requests (unlock_hash, ip_address);
-
-CREATE TABLE faucet_settings (
-	id INT PRIMARY KEY NOT NULL DEFAULT 0 CHECK (id = 0), -- enforce a single row
-	last_processed_change TEXT NOT NULL DEFAULT ""
-);
 
 CREATE TABLE global_settings (
 	id INT PRIMARY KEY NOT NULL DEFAULT 0 CHECK (id = 0), -- enforce a single row

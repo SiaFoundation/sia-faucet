@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
 
 	_ "github.com/mattn/go-sqlite3" // import sqlite3 driver
 )
@@ -38,40 +37,7 @@ type (
 	Store struct {
 		db *sql.DB
 	}
-
-	txnWrapper struct {
-		*sql.Conn
-	}
 )
-
-// Exec executes a query without returning any rows. The args are for any
-// placeholder parameters in the query.
-func (tw *txnWrapper) Exec(query string, args ...any) (sql.Result, error) {
-	return tw.Conn.ExecContext(context.Background(), query, args...)
-}
-
-// Prepare creates a prepared statement for later queries or executions.
-// Multiple queries or executions may be run concurrently from the returned
-// statement. The caller must call the statement's Close method when the
-// statement is no longer needed.
-func (tw *txnWrapper) Prepare(query string) (*sql.Stmt, error) {
-	return tw.Conn.PrepareContext(context.Background(), query)
-}
-
-// Query executes a query that returns rows, typically a SELECT. The args are
-// for any placeholder parameters in the query.
-func (tw *txnWrapper) Query(query string, args ...any) (*sql.Rows, error) {
-	return tw.Conn.QueryContext(context.Background(), query, args...)
-}
-
-// QueryRow executes a query that is expected to return at most one row.
-// QueryRow always returns a non-nil value. Errors are deferred until
-// Row's Scan method is called. If the query selects no rows, the *Row's Scan
-// will return ErrNoRows. Otherwise, the *Row's Scan scans the first selected
-// row and discards the rest.
-func (tw *txnWrapper) QueryRow(query string, args ...any) *sql.Row {
-	return tw.Conn.QueryRowContext(context.Background(), query, args...)
-}
 
 // transaction executes a function within a database transaction. If the
 // function returns an error, the transaction is rolled back. Otherwise, the
@@ -88,34 +54,6 @@ func (s *Store) transaction(fn func(txn) error) error {
 		}
 		return fmt.Errorf("failed to execute transaction: %w", err)
 	} else if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-	return nil
-}
-
-// exclusiveTransaction executes a function within an exclusive transaction.
-//
-// note: the sqlite3 library does not support setting BEGIN EXCLUSIVE at the
-// transaction level, so it's done manually here. It may be preferable to make
-// all transactions exclusive.
-func (s *Store) exclusiveTransaction(fn func(txn) error) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-
-	conn, err := s.db.Conn(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get connection: %w", err)
-	}
-	defer conn.Close()
-
-	if _, err := conn.ExecContext(ctx, "BEGIN EXCLUSIVE"); err != nil {
-		return fmt.Errorf("failed to begin exclusive transaction: %w", err)
-	} else if err := fn(&txnWrapper{conn}); err != nil {
-		if _, err := conn.ExecContext(ctx, "ROLLBACK"); err != nil {
-			return fmt.Errorf("failed to rollback transaction: %w", err)
-		}
-		return err
-	} else if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	return nil

@@ -3,12 +3,12 @@ package sqlite
 import (
 	"database/sql"
 	"database/sql/driver"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"math/big"
 	"time"
 
-	"go.sia.tech/siad/types"
+	"go.sia.tech/core/types"
 )
 
 type (
@@ -34,26 +34,25 @@ func (sn *sqlNullable[T]) Scan(src interface{}) error {
 
 // Scan implements the sql.Scanner interface.
 func (sc *sqlCurrency) Scan(src interface{}) error {
-	var i big.Int
-	var ok bool
-	switch src := src.(type) {
-	case []byte:
-		_, ok = i.SetString(string(src), 10)
-	case string:
-		_, ok = i.SetString(src, 10)
-	default:
-		return fmt.Errorf("cannot scan %T to Currency", src)
-	}
+	// Currency is encoded as two 64-bit big-endian integers for sorting
+	buf, ok := src.([]byte)
 	if !ok {
-		return fmt.Errorf("failed to scan %v to Currency", src)
+		return fmt.Errorf("expected []byte, got %T", src)
+	} else if len(buf) != 16 {
+		return fmt.Errorf("expected 16 bytes, got %d", len(buf))
 	}
-	*sc = (sqlCurrency)(types.NewCurrency(&i))
+	sc.Hi = binary.BigEndian.Uint64(buf)
+	sc.Lo = binary.BigEndian.Uint64(buf[8:])
 	return nil
 }
 
 // Value implements the driver.Valuer interface.
 func (sc sqlCurrency) Value() (driver.Value, error) {
-	return types.Currency(sc).String(), nil
+	// Currency is encoded as two 64-bit big-endian integers for sorting
+	buf := make([]byte, 16)
+	binary.BigEndian.PutUint64(buf, sc.Hi)
+	binary.BigEndian.PutUint64(buf[8:], sc.Lo)
+	return buf, nil
 }
 
 // Scan implements the sql.Scanner interface.
