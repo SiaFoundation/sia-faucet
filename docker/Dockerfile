@@ -14,7 +14,7 @@ LABEL maintainer="The Sia Foundation <info@sia.tech>"
 ENV PUID=0
 ENV PGID=0
 
-ENV FAUCETD_WALLET_SEED=
+ENV FAUCETD_RECOVERY_PHRASE=
 
 # Copy binary and prepare data dir.
 COPY --from=builder /faucetd/bin/faucetd /usr/bin/
