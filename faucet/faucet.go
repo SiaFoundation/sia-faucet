@@ -61,8 +61,7 @@ type (
 		api        *api.Client
 		wallet     *api.WalletClient
 
-		log                 *zap.Logger
-		lastConsensusChange time.Time
+		log *zap.Logger
 
 		close chan struct{}
 
@@ -100,68 +99,76 @@ func (r *RequestID) UnmarshalText(b []byte) error {
 
 // processRequests processes pending requests and broadcasts them to the
 // blockchain.
-func (f *Faucet) processRequests(limit uint64) (int, error) {
+func (f *Faucet) processRequests(limit uint64) (int, types.Currency, error) {
 	requests, err := f.store.UnprocessedRequests(limit)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get unprocessed requests: %w", err)
+		return 0, types.ZeroCurrency, fmt.Errorf("failed to get unprocessed requests: %w", err)
 	} else if len(requests) == 0 {
-		return 0, nil
+		return 0, types.ZeroCurrency, nil
 	}
 
 	var processed []RequestID
 	var outputs []types.SiacoinOutput
+	var total types.Currency
 	for _, req := range requests {
 		outputs = append(outputs, types.SiacoinOutput{
 			Value:   req.Amount,
 			Address: req.UnlockHash,
 		})
 		processed = append(processed, req.ID)
+		total = total.Add(req.Amount)
 	}
 
 	changeAddress := types.StandardUnlockHash(f.signingKey.PublicKey())
 	cs, err := f.api.ConsensusTipState()
 	if err != nil {
-		return 0, fmt.Errorf("failed to get consensus tip state: %w", err)
+		return 0, types.ZeroCurrency, fmt.Errorf("failed to get consensus tip state: %w", err)
 	}
 
 	var transactionID types.TransactionID
 	if cs.Index.Height < cs.Network.HardforkV2.AllowHeight {
 		resp, err := f.wallet.Construct(outputs, nil, changeAddress)
 		if err != nil {
-			return 0, fmt.Errorf("failed to construct transaction: %w", err)
+			return 0, types.ZeroCurrency, fmt.Errorf("failed to construct transaction: %w", err)
 		}
 
+		var inputs []types.SiacoinOutputID
 		for i, sig := range resp.Transaction.Signatures {
 			sigHash := cs.WholeSigHash(resp.Transaction, sig.ParentID, 0, 0, nil)
 			signature := f.signingKey.SignHash(sigHash)
 			resp.Transaction.Signatures[i].Signature = signature[:]
+			inputs = append(inputs, types.SiacoinOutputID(sig.ParentID))
 		}
 
 		if err := f.api.TxpoolBroadcast(resp.Basis, []types.Transaction{resp.Transaction}, nil); err != nil {
-			return 0, fmt.Errorf("failed to broadcast transaction: %w", err)
+			_ = f.wallet.Release(inputs, nil)
+			return 0, types.ZeroCurrency, fmt.Errorf("failed to broadcast transaction: %w", err)
 		}
 		transactionID = resp.ID
 	} else {
 		resp, err := f.wallet.ConstructV2(outputs, nil, changeAddress)
 		if err != nil {
-			return 0, fmt.Errorf("failed to construct transaction: %w", err)
+			return 0, types.ZeroCurrency, fmt.Errorf("failed to construct transaction: %w", err)
 		}
 
+		var inputs []types.SiacoinOutputID
 		sigHash := cs.InputSigHash(resp.Transaction)
 		for i := range resp.Transaction.SiacoinInputs {
+			inputs = append(inputs, resp.Transaction.SiacoinInputs[i].Parent.ID)
 			resp.Transaction.SiacoinInputs[i].SatisfiedPolicy.Signatures = []types.Signature{f.signingKey.SignHash(sigHash)}
 		}
 
 		if err := f.api.TxpoolBroadcast(resp.Basis, nil, []types.V2Transaction{resp.Transaction}); err != nil {
-			return 0, fmt.Errorf("failed to broadcast transaction: %w", err)
+			_ = f.wallet.Release(inputs, nil)
+			return 0, types.ZeroCurrency, fmt.Errorf("failed to broadcast transaction: %w", err)
 		}
 		transactionID = resp.ID
 	}
 
 	if err := f.store.ProcessRequests(processed, transactionID); err != nil {
-		return 0, fmt.Errorf("failed to process requests: %w", err)
+		return 0, types.ZeroCurrency, fmt.Errorf("failed to process requests: %w", err)
 	}
-	return len(requests), nil
+	return len(requests), total, nil
 }
 
 // Close closes the faucet and stops processing requests.
@@ -193,11 +200,12 @@ func (f *Faucet) RequestAmount(address types.Address, ipAddress string, amount t
 	} else if count >= f.maxRequestsPerDay {
 		return RequestID{}, ErrCountExceeded
 	}
+	f.log.Debug("requesting funds", zap.String("ip", ipAddress), zap.Stringer("address", address), zap.Stringer("amount", amount))
 	return f.store.AddRequest(address, ipAddress, amount)
 }
 
 // New initializes a new faucet.
-func New(store Store, signingKey types.PrivateKey, client *api.Client, walletd *api.WalletClient, maxRequestsPerDay int, maxSCPerDay types.Currency, interval time.Duration, log *zap.Logger) (*Faucet, error) {
+func New(store Store, signingKey types.PrivateKey, client *api.Client, walletd *api.WalletClient, maxRequestsPerDay int, maxSCPerDay types.Currency, log *zap.Logger) (*Faucet, error) {
 	f := &Faucet{
 		store:  store,
 		api:    client,
@@ -207,15 +215,18 @@ func New(store Store, signingKey types.PrivateKey, client *api.Client, walletd *
 		maxSCPerDay:       maxSCPerDay,
 		maxRequestsPerDay: maxRequestsPerDay,
 
-		log:                 log,
-		lastConsensusChange: time.Now(),
-
+		log:   log,
 		close: make(chan struct{}),
+	}
+
+	current, err := client.ConsensusTip()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get consensus tip: %w", err)
 	}
 
 	go func() {
 		// initialize the processing timer
-		t := time.NewTicker(interval)
+		t := time.NewTicker(10 * time.Second)
 		defer t.Stop()
 
 		for {
@@ -224,21 +235,22 @@ func New(store Store, signingKey types.PrivateKey, client *api.Client, walletd *
 			case <-f.close: // close received, stop processing
 				return
 			case <-t.C: // timer fired, begin processing request queue
-				err := func() error {
-					// batch requests until either the queue or wallet are empty
-					n, err := f.processRequests(50)
-					if err != nil { // stop processing if an error occurred
-						return fmt.Errorf("failed to process requests: %w", err)
-					} else if n == 0 { // don't log if no requests were processed
-						return nil
-					}
-					// log the number of requests processed and remaining balance
-					resp, _ := f.wallet.Balance()
-					log.Debug("processed requests", zap.Int("requests", n), zap.Stringer("balance", resp.Siacoins))
-					return nil
-				}()
+				// grab the current consensus tip
+				index, err := client.ConsensusTip()
 				if err != nil {
+					log.Error("failed to get consensus tip", zap.Error(err))
+					continue
+				} else if current == index {
+					continue // skip processing if the consensus tip hasn't changed
+				}
 
+				// process requests
+				n, amount, err := f.processRequests(50)
+				if err != nil { // stop processing if an error occurred
+					log.Error("failed to process requests", zap.Error(err))
+				} else if n > 0 {
+					log.Info("processed requests", zap.Int("requests", n), zap.Stringer("amount", amount))
+					current = index // only change tips if requests were processed
 				}
 			}
 		}

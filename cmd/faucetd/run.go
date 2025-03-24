@@ -39,7 +39,7 @@ func run(ctx context.Context, signingKey types.PrivateKey, log *zap.Logger) erro
 	}
 
 	// initialize the faucet
-	f, err := faucet.New(store, signingKey, client, wc, maxRequestsPerDay, maxSCPerDay, processInterval, log.Named("faucet"))
+	f, err := faucet.New(store, signingKey, client, wc, maxRequestsPerDay, maxSCPerDay, log.Named("faucet"))
 	if err != nil {
 		return fmt.Errorf("failed to create faucet: %w", err)
 	}
@@ -62,7 +62,7 @@ func run(ctx context.Context, signingKey types.PrivateKey, log *zap.Logger) erro
 			log.Panic("failed to start API server", zap.Error(err))
 		}
 	}()
-	log.Info("faucet started", zap.Duration("interval", processInterval), zap.Stringer("api", l.Addr()), zap.String("network", cs.Network.Name), zap.Stringer("balance", balance.Siacoins))
+	log.Info("faucet started", zap.Stringer("api", l.Addr()), zap.String("network", cs.Network.Name), zap.Stringer("balance", balance.Siacoins))
 
 	<-ctx.Done()
 	return nil

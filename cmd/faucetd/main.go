@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"os/signal"
-	"time"
 
 	"go.sia.tech/core/types"
 	"go.sia.tech/walletd/v2/wallet"
@@ -27,7 +26,6 @@ var (
 	// faucet flags
 	maxSCPerDay       = types.Siacoins(100)
 	maxRequestsPerDay = 5
-	processInterval   = 2 * time.Minute
 )
 
 func main() {
@@ -40,7 +38,6 @@ func main() {
 	rootCmd.TextVar(&logLevel, "log", logLevel, "log level")
 	rootCmd.TextVar(&maxSCPerDay, "max.sc", maxSCPerDay, "max amount of SC per IP/address per day")
 	rootCmd.IntVar(&maxRequestsPerDay, "max.requests", maxRequestsPerDay, "max number of requests per IP/address per day")
-	rootCmd.DurationVar(&processInterval, "interval", processInterval, "interval, in seconds, to process requests")
 
 	cmd := flagg.Parse(flagg.Tree{
 		Cmd: rootCmd,
@@ -60,8 +57,6 @@ func main() {
 	switch cmd {
 	case rootCmd:
 		switch {
-		case processInterval <= 0:
-			log.Fatal("interval must be positive")
 		case maxSCPerDay.IsZero():
 			log.Fatal("max.sc must be nonzero")
 		case maxRequestsPerDay <= 0:
