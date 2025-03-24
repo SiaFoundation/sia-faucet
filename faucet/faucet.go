@@ -200,7 +200,7 @@ func (f *Faucet) RequestAmount(address types.Address, ipAddress string, amount t
 	} else if count >= f.maxRequestsPerDay {
 		return RequestID{}, ErrCountExceeded
 	}
-	f.log.Debug("requesting funds", zap.String("ip", ipAddress), zap.Stringer("address", address), zap.Stringer("amount", amount))
+	f.log.Debug("requesting funds", zap.String("ip", ipAddress), zap.Stringer("address", address), zap.Stringer("amount", amount), zap.Stringer("remainder", f.maxSCPerDay.Sub(amountRequested)), zap.Int("requests", count))
 	return f.store.AddRequest(address, ipAddress, amount)
 }
 
@@ -234,7 +234,7 @@ func New(store Store, signingKey types.PrivateKey, client *api.Client, walletd *
 			select {
 			case <-f.close: // close received, stop processing
 				return
-			case <-t.C: // timer fired, begin processing request queue
+			case <-t.C:
 				// grab the current consensus tip
 				index, err := client.ConsensusTip()
 				if err != nil {

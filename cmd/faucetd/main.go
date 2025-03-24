@@ -61,7 +61,6 @@ func main() {
 			log.Fatal("max.sc must be nonzero")
 		case maxRequestsPerDay <= 0:
 			log.Fatal("max.requests must be positive")
-
 		}
 
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -76,5 +75,7 @@ func main() {
 		if err := run(ctx, signingKey, log); err != nil {
 			log.Fatal("faucetd failed", zap.Error(err))
 		}
+	default:
+		log.Fatal("unexpected command")
 	}
 }
