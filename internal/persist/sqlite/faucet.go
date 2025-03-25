@@ -83,9 +83,9 @@ func (s *Store) Requests(address types.Address, ipAddress string) (types.Currenc
 func (s *Store) UnprocessedRequests(limit uint64) ([]faucet.Request, error) {
 	rows, err := s.db.Query(`SELECT id, unlock_hash, ip_address, amount, request_status, transaction_id, block_id, date_created 
 FROM faucet_requests 
-WHERE request_status=$1 OR (request_status=$2 AND block_id IS NULL AND date_created < $3)
+WHERE request_status=$1
 ORDER BY date_created ASC
-LIMIT $3`, faucet.RequestStatusPending, faucet.RequestStatusBroadcast, valueTime(time.Now().Add(-6*time.Hour)), limit)
+LIMIT $3`, faucet.RequestStatusPending, limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get unprocessed requests: %w", err)
 	}
