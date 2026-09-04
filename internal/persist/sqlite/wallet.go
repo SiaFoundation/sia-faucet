@@ -169,8 +169,16 @@ func (s *Store) RemoveBroadcastedSet(set wallet.BroadcastedSet) error {
 
 // ResetChainState removes all wallet state so the chain can be rescanned.
 func (s *Store) ResetChainState() error {
-	_, err := s.db.Exec(`DELETE FROM wallet_siacoin_elements; DELETE FROM wallet_events; UPDATE global_settings SET last_scanned_index=NULL;`)
-	return err
+	return s.transaction(func(tx txn) error {
+		if _, err := tx.Exec(`DELETE FROM wallet_siacoin_elements`); err != nil {
+			return fmt.Errorf("failed to delete siacoin elements: %w", err)
+		} else if _, err := tx.Exec(`DELETE FROM wallet_events`); err != nil {
+			return fmt.Errorf("failed to delete wallet events: %w", err)
+		} else if _, err := tx.Exec(`UPDATE global_settings SET last_scanned_index=NULL`); err != nil {
+			return fmt.Errorf("failed to reset last scanned index: %w", err)
+		}
+		return nil
+	})
 }
 
 // SetCheckpoint sets the chain index scanning will resume from.
