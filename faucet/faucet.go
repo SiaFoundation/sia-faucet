@@ -153,6 +153,7 @@ func (f *Faucet) syncChain() error {
 			break
 		}
 
+		resetAttempts = 0
 		err = f.store.UpdateChainState(func(tx UpdateTx) error {
 			if err := f.wallet.UpdateChainState(tx, reverted, applied); err != nil {
 				return fmt.Errorf("failed to update wallet state: %w", err)
