@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"go.sia.tech/core/consensus"
 	"go.sia.tech/core/types"
 	"go.sia.tech/faucet/faucet"
 	"go.sia.tech/jape"
@@ -20,8 +21,14 @@ type (
 		Amount     types.Currency `json:"amount"`
 	}
 
+	// A ChainManager provides the current consensus state.
+	ChainManager interface {
+		TipState() consensus.State
+	}
+
 	// An API routes requests to a faucet
 	api struct {
+		cm     ChainManager
 		faucet *faucet.Faucet
 		log    *zap.Logger
 	}
@@ -88,8 +95,9 @@ func (a *api) handleCreateRequest(jc jape.Context) {
 }
 
 // New initializes an API router.
-func New(f *faucet.Faucet, log *zap.Logger) http.Handler {
+func New(cm ChainManager, f *faucet.Faucet, log *zap.Logger) http.Handler {
 	a := &api{
+		cm:     cm,
 		faucet: f,
 		log:    log,
 	}

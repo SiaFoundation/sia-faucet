@@ -4,10 +4,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"go.sia.tech/core/types"
-	"go.sia.tech/walletd/v2/api"
+	"go.sia.tech/coreutils/chain"
+	"go.sia.tech/coreutils/wallet"
 	"go.uber.org/zap"
 )
 
@@ -16,6 +18,14 @@ const (
 	RequestStatusPending   RequestStatus = "pending"
 	RequestStatusBroadcast RequestStatus = "broadcast"
 	RequestStatusConfirmed RequestStatus = "confirmed"
+)
+
+const (
+	processInterval  = 10 * time.Second
+	processBatchSize = 50
+	updateBatchSize  = 100
+	estimatedTxnSize = 4096
+	pruneWindow      = 7 * 24 * time.Hour
 )
 
 type (
@@ -36,6 +46,13 @@ type (
 		Timestamp     time.Time           `json:"timestamp"`
 	}
 
+	// An UpdateTx atomically applies chain updates to the wallet state.
+	UpdateTx interface {
+		wallet.UpdateTx
+
+		SetLastIndex(types.ChainIndex) error
+	}
+
 	// A Store manages requests and the state of the faucet.
 	Store interface {
 		// Request returns the request with the given id
@@ -50,6 +67,13 @@ type (
 		// ProcessRequests updates the transaction id for the requests and
 		// marks them as "broadcast"
 		ProcessRequests(requests []RequestID, transactionID types.TransactionID) error
+
+		// ResetChainState removes all wallet state so the chain can be
+		// rescanned.
+		ResetChainState() error
+		// UpdateChainState atomically applies chain updates to the wallet
+		// state.
+		UpdateChainState(func(UpdateTx) error) error
 	}
 
 	// A Faucet fulfills payment requests.
@@ -57,15 +81,13 @@ type (
 		maxSCPerDay       types.Currency
 		maxRequestsPerDay int
 
-		signingKey types.PrivateKey
-		api        *api.Client
-		wallet     *api.WalletClient
-
-		log *zap.Logger
+		cm     *chain.Manager
+		wallet *wallet.SingleAddressWallet
+		store  Store
+		log    *zap.Logger
 
 		close chan struct{}
-
-		store Store
+		wg    sync.WaitGroup
 	}
 )
 
@@ -97,6 +119,64 @@ func (r *RequestID) UnmarshalText(b []byte) error {
 	return err
 }
 
+// syncChain applies chain updates to the wallet until it reaches the chain
+// manager's tip.
+func (f *Faucet) syncChain() error {
+	index, err := f.wallet.Tip()
+	if err != nil {
+		return fmt.Errorf("failed to get wallet tip: %w", err)
+	}
+
+	pruneTarget := uint64(pruneWindow / f.cm.TipState().Network.BlockInterval)
+
+	var resetAttempts int
+	for index != f.cm.Tip() {
+		select {
+		case <-f.close:
+			return nil
+		default:
+		}
+
+		reverted, applied, err := f.cm.UpdatesSince(index, updateBatchSize)
+		if err != nil {
+			resetAttempts++
+			if resetAttempts > 3 {
+				return fmt.Errorf("failed to get chain updates: %w", err)
+			}
+			f.log.Warn("resetting chain state", zap.Stringer("index", index), zap.Error(err))
+			if err := f.store.ResetChainState(); err != nil {
+				return fmt.Errorf("failed to reset chain state: %w", err)
+			}
+			index = types.ChainIndex{}
+			continue
+		} else if len(reverted) == 0 && len(applied) == 0 {
+			break
+		}
+
+		err = f.store.UpdateChainState(func(tx UpdateTx) error {
+			if err := f.wallet.UpdateChainState(tx, reverted, applied); err != nil {
+				return fmt.Errorf("failed to update wallet state: %w", err)
+			}
+			if len(applied) > 0 {
+				index = applied[len(applied)-1].State.Index
+			} else {
+				index = reverted[len(reverted)-1].State.Index
+			}
+			return tx.SetLastIndex(index)
+		})
+		if err != nil {
+			return fmt.Errorf("failed to update chain state: %w", err)
+		}
+		f.log.Debug("synced wallet", zap.Stringer("index", index))
+
+		if index.Height > pruneTarget {
+			f.cm.PruneBlocks(index.Height - pruneTarget)
+		}
+	}
+
+	return nil
+}
+
 // processRequests processes pending requests and broadcasts them to the
 // blockchain.
 func (f *Faucet) processRequests(limit uint64) (int, types.Currency, error) {
@@ -108,10 +188,12 @@ func (f *Faucet) processRequests(limit uint64) (int, types.Currency, error) {
 	}
 
 	var processed []RequestID
-	var outputs []types.SiacoinOutput
 	var total types.Currency
+	txn := types.V2Transaction{
+		MinerFee: f.wallet.RecommendedFee().Mul64(estimatedTxnSize),
+	}
 	for _, req := range requests {
-		outputs = append(outputs, types.SiacoinOutput{
+		txn.SiacoinOutputs = append(txn.SiacoinOutputs, types.SiacoinOutput{
 			Value:   req.Amount,
 			Address: req.UnlockHash,
 		})
@@ -119,53 +201,20 @@ func (f *Faucet) processRequests(limit uint64) (int, types.Currency, error) {
 		total = total.Add(req.Amount)
 	}
 
-	changeAddress := types.StandardUnlockHash(f.signingKey.PublicKey())
-	cs, err := f.api.ConsensusTipState()
+	basis, toSign, err := f.wallet.FundV2Transaction(&txn, total.Add(txn.MinerFee), false)
 	if err != nil {
-		return 0, types.ZeroCurrency, fmt.Errorf("failed to get consensus tip state: %w", err)
+		return 0, types.ZeroCurrency, fmt.Errorf("failed to fund transaction: %w", err)
 	}
+	f.wallet.SignV2Inputs(&txn, toSign)
 
-	var transactionID types.TransactionID
-	if cs.Index.Height < cs.Network.HardforkV2.AllowHeight {
-		resp, err := f.wallet.Construct(outputs, nil, changeAddress)
-		if err != nil {
-			return 0, types.ZeroCurrency, fmt.Errorf("failed to construct transaction: %w", err)
-		}
-
-		var inputs []types.SiacoinOutputID
-		for i, sig := range resp.Transaction.Signatures {
-			sigHash := cs.WholeSigHash(resp.Transaction, sig.ParentID, 0, 0, nil)
-			signature := f.signingKey.SignHash(sigHash)
-			resp.Transaction.Signatures[i].Signature = signature[:]
-			inputs = append(inputs, types.SiacoinOutputID(sig.ParentID))
-		}
-
-		if err := f.api.TxpoolBroadcast(resp.Basis, []types.Transaction{resp.Transaction}, nil); err != nil {
-			_ = f.wallet.Release(inputs, nil)
-			return 0, types.ZeroCurrency, fmt.Errorf("failed to broadcast transaction: %w", err)
-		}
-		transactionID = resp.ID
-	} else {
-		resp, err := f.wallet.ConstructV2(outputs, nil, changeAddress)
-		if err != nil {
-			return 0, types.ZeroCurrency, fmt.Errorf("failed to construct transaction: %w", err)
-		}
-
-		var inputs []types.SiacoinOutputID
-		sigHash := cs.InputSigHash(resp.Transaction)
-		for i := range resp.Transaction.SiacoinInputs {
-			inputs = append(inputs, resp.Transaction.SiacoinInputs[i].Parent.ID)
-			resp.Transaction.SiacoinInputs[i].SatisfiedPolicy.Signatures = []types.Signature{f.signingKey.SignHash(sigHash)}
-		}
-
-		if err := f.api.TxpoolBroadcast(resp.Basis, nil, []types.V2Transaction{resp.Transaction}); err != nil {
-			_ = f.wallet.Release(inputs, nil)
-			return 0, types.ZeroCurrency, fmt.Errorf("failed to broadcast transaction: %w", err)
-		}
-		transactionID = resp.ID
-	}
-
-	if err := f.store.ProcessRequests(processed, transactionID); err != nil {
+	basis, txnset, err := f.cm.V2TransactionSet(basis, txn)
+	if err != nil {
+		f.wallet.ReleaseInputs(nil, []types.V2Transaction{txn})
+		return 0, types.ZeroCurrency, fmt.Errorf("failed to create transaction set: %w", err)
+	} else if err := f.wallet.BroadcastV2TransactionSet(basis, txnset); err != nil {
+		f.wallet.ReleaseInputs(nil, []types.V2Transaction{txn})
+		return 0, types.ZeroCurrency, fmt.Errorf("failed to broadcast transaction: %w", err)
+	} else if err := f.store.ProcessRequests(processed, txn.ID()); err != nil {
 		return 0, types.ZeroCurrency, fmt.Errorf("failed to process requests: %w", err)
 	}
 	return len(requests), total, nil
@@ -179,6 +228,7 @@ func (f *Faucet) Close() error {
 	default:
 	}
 	close(f.close)
+	f.wg.Wait()
 	return nil
 }
 
@@ -205,13 +255,12 @@ func (f *Faucet) RequestAmount(address types.Address, ipAddress string, amount t
 }
 
 // New initializes a new faucet.
-func New(store Store, signingKey types.PrivateKey, client *api.Client, walletd *api.WalletClient, maxRequestsPerDay int, maxSCPerDay types.Currency, log *zap.Logger) (*Faucet, error) {
+func New(store Store, cm *chain.Manager, w *wallet.SingleAddressWallet, maxRequestsPerDay int, maxSCPerDay types.Currency, log *zap.Logger) *Faucet {
 	f := &Faucet{
 		store:  store,
-		api:    client,
-		wallet: walletd,
+		cm:     cm,
+		wallet: w,
 
-		signingKey:        signingKey,
 		maxSCPerDay:       maxSCPerDay,
 		maxRequestsPerDay: maxRequestsPerDay,
 
@@ -219,41 +268,67 @@ func New(store Store, signingKey types.PrivateKey, client *api.Client, walletd *
 		close: make(chan struct{}),
 	}
 
-	current, err := client.ConsensusTip()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get consensus tip: %w", err)
-	}
+	reorgCh := make(chan struct{}, 1)
+	reorgCh <- struct{}{}
+	stop := cm.OnReorg(func(types.ChainIndex) {
+		select {
+		case reorgCh <- struct{}{}:
+		default:
+		}
+	})
 
+	f.wg.Add(2)
 	go func() {
-		// initialize the processing timer
-		t := time.NewTicker(10 * time.Second)
-		defer t.Stop()
+		defer f.wg.Done()
+		defer stop()
 
 		for {
-			log := f.log.Named("process")
 			select {
-			case <-f.close: // close received, stop processing
+			case <-f.close:
 				return
-			case <-t.C:
-				// grab the current consensus tip
-				index, err := client.ConsensusTip()
-				if err != nil {
-					log.Error("failed to get consensus tip", zap.Error(err))
-					continue
-				} else if current == index {
-					continue // skip processing if the consensus tip hasn't changed
-				}
-
-				// process requests
-				n, amount, err := f.processRequests(50)
-				if err != nil { // stop processing if an error occurred
-					log.Error("failed to process requests", zap.Error(err))
-				} else if n > 0 {
-					log.Info("processed requests", zap.Int("requests", n), zap.Stringer("amount", amount))
-					current = index // only change tips if requests were processed
+			case <-reorgCh:
+				if err := f.syncChain(); err != nil {
+					f.log.Error("failed to sync chain", zap.Error(err))
 				}
 			}
 		}
 	}()
-	return f, nil
+
+	go func() {
+		defer f.wg.Done()
+
+		log := f.log.Named("process")
+		t := time.NewTicker(processInterval)
+		defer t.Stop()
+
+		var current types.ChainIndex
+		for {
+			select {
+			case <-f.close:
+				return
+			case <-t.C:
+				cs := f.cm.TipState()
+				if cs.Index == current {
+					continue // skip processing if the consensus tip hasn't changed
+				}
+
+				walletTip, err := f.wallet.Tip()
+				if err != nil {
+					log.Error("failed to get wallet tip", zap.Error(err))
+					continue
+				} else if walletTip != cs.Index || time.Since(cs.PrevTimestamps[0]) > 4*cs.Network.BlockInterval {
+					continue // skip processing until the wallet and chain are synced
+				}
+
+				n, amount, err := f.processRequests(processBatchSize)
+				if err != nil {
+					log.Error("failed to process requests", zap.Error(err))
+				} else if n > 0 {
+					log.Info("processed requests", zap.Int("requests", n), zap.Stringer("amount", amount))
+					current = cs.Index // only change tips if requests were processed
+				}
+			}
+		}
+	}()
+	return f
 }

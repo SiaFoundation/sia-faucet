@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"bytes"
 	"database/sql"
 	"database/sql/driver"
 	"encoding/binary"
@@ -19,6 +20,10 @@ type (
 	sqlNullable[T sql.Scanner] struct {
 		Value T
 		Valid bool
+	}
+
+	decodable struct {
+		v types.DecoderFrom
 	}
 )
 
@@ -85,6 +90,17 @@ func (st sqlTime) Value() (driver.Value, error) {
 	return time.Time(st).Unix(), nil
 }
 
+// Scan implements the sql.Scanner interface.
+func (d *decodable) Scan(src interface{}) error {
+	buf, ok := src.([]byte)
+	if !ok {
+		return fmt.Errorf("expected []byte, got %T", src)
+	}
+	dec := types.NewBufDecoder(buf)
+	d.v.DecodeFrom(dec)
+	return dec.Err()
+}
+
 func scanCurrency(c *types.Currency) *sqlCurrency {
 	return (*sqlCurrency)(c)
 }
@@ -111,4 +127,24 @@ func valueTime(t time.Time) sqlTime {
 
 func newSqlNullable[T sql.Scanner](v T) *sqlNullable[T] {
 	return &sqlNullable[T]{Value: v}
+}
+
+func encode(v types.EncoderTo) []byte {
+	var buf bytes.Buffer
+	e := types.NewEncoder(&buf)
+	v.EncodeTo(e)
+	e.Flush()
+	return buf.Bytes()
+}
+
+func encodeSlice[T types.EncoderTo](v []T) []byte {
+	var buf bytes.Buffer
+	e := types.NewEncoder(&buf)
+	types.EncodeSlice(e, v)
+	e.Flush()
+	return buf.Bytes()
+}
+
+func decode(v types.DecoderFrom) *decodable {
+	return &decodable{v: v}
 }

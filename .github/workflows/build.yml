@@ -1,0 +1,62 @@
+name: Build binaries
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  CGO_ENABLED: 1
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }}/${{ matrix.arch }})
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            os: linux
+            arch: amd64
+            build-args: -tags='netgo timetzdata' -trimpath -a -ldflags '-s -w -linkmode external -extldflags "-static"'
+          - runner: ubuntu-24.04-arm
+            os: linux
+            arch: arm64
+            build-args: -tags='netgo timetzdata' -trimpath -a -ldflags '-s -w -linkmode external -extldflags "-static"'
+          - runner: macos-latest
+            os: darwin
+            arch: amd64
+            build-args: -tags='netgo timetzdata' -trimpath -a -ldflags '-s -w'
+          - runner: macos-latest
+            os: darwin
+            arch: arm64
+            build-args: -tags='netgo timetzdata' -trimpath -a -ldflags '-s -w'
+          - runner: windows-latest
+            os: windows
+            arch: amd64
+            build-args: -tags='netgo timetzdata' -trimpath -a -ldflags '-s -w -linkmode external -extldflags "-static"'
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Build
+        shell: bash
+        env:
+          GOARCH: ${{ matrix.arch }}
+        run: go build -o bin/ ${{ matrix.build-args }} ./cmd/faucetd
+      - name: Package
+        shell: bash
+        run: |
+          mkdir -p release
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            7z a release/faucetd_${{ matrix.os }}_${{ matrix.arch }}.zip ./bin/*
+          else
+            zip -qj release/faucetd_${{ matrix.os }}_${{ matrix.arch }}.zip bin/*
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: faucetd-${{ matrix.os }}-${{ matrix.arch }}
+          path: release/
+          if-no-files-found: error
