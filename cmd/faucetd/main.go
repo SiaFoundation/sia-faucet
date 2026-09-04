@@ -6,7 +6,7 @@ import (
 	"os/signal"
 
 	"go.sia.tech/core/types"
-	"go.sia.tech/walletd/v2/wallet"
+	"go.sia.tech/coreutils/wallet"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"lukechampine.com/flagg"
@@ -14,14 +14,12 @@ import (
 
 var (
 	// global flags
-	dir      string
-	httpAddr string
-	logLevel = zap.NewAtomicLevelAt(zap.InfoLevel)
-
-	// walletd flags
-	walletdAPIAddr     string
-	walletdAPIPassword string
-	walletdWalletID    = wallet.ID(1)
+	dir        string
+	httpAddr   string
+	syncerAddr string
+	network    string
+	instant    bool
+	logLevel   = zap.NewAtomicLevelAt(zap.InfoLevel)
 
 	// faucet flags
 	maxSCPerDay       = types.Siacoins(100)
@@ -32,9 +30,9 @@ func main() {
 	rootCmd := flagg.Root
 	rootCmd.StringVar(&dir, "dir", "", "directory to store data in")
 	rootCmd.StringVar(&httpAddr, "http", ":8080", "HTTP address to listen on")
-	rootCmd.StringVar(&walletdAPIAddr, "walletd.address", "localhost:9980/api", "address of walletd")
-	rootCmd.StringVar(&walletdAPIPassword, "walletd.password", "", "password for walletd API")
-	rootCmd.Int64Var((*int64)(&walletdWalletID), "walletd.wallet", int64(walletdWalletID), "ID of the wallet to use")
+	rootCmd.StringVar(&syncerAddr, "syncer", ":9981", "address to listen on for peer connections")
+	rootCmd.StringVar(&network, "network", "zen", "network to connect to (mainnet or zen)")
+	rootCmd.BoolVar(&instant, "instant", true, "sync from a recent checkpoint when the consensus database does not exist")
 	rootCmd.TextVar(&logLevel, "log", logLevel, "log level")
 	rootCmd.TextVar(&maxSCPerDay, "max.sc", maxSCPerDay, "max amount of SC per IP/address per day")
 	rootCmd.IntVar(&maxRequestsPerDay, "max.requests", maxRequestsPerDay, "max number of requests per IP/address per day")

@@ -6,8 +6,6 @@ import (
 	"fmt"
 )
 
-const clearLockedSectors = `UPDATE volume_sectors SET locks=0;`
-
 // init queries are run when the database is first created.
 //
 //go:embed init.sql
@@ -15,30 +13,27 @@ var initDatabase string
 
 func (s *Store) init() error {
 	// calculate the expected final database version
-	dbVersion := uint64(1 + len(migrations))
+	target := uint64(1 + len(migrations))
 	return s.transaction(func(tx txn) error {
 		// check the current database version and perform any necessary
 		// migrations
 		version := getDBVersion(tx)
-		if version == 0 {
+		switch {
+		case version == 0:
 			if _, err := tx.Exec(initDatabase); err != nil {
 				return fmt.Errorf("failed to initialize database: %w", err)
 			}
 			return nil
-		} else if version == dbVersion {
+		case version == target:
 			return nil
+		case version > target:
+			return fmt.Errorf("database version %v is newer than expected %v", version, target)
 		}
-		for _, fn := range migrations[version-1 : dbVersion] {
-			version++
-			if err := fn(tx); err != nil {
-				return fmt.Errorf("failed to migrate database to version %v: %w", version, err)
+		for ; version < target; version++ {
+			if err := migrations[version-1](tx); err != nil {
+				return fmt.Errorf("failed to migrate database to version %v: %w", version+1, err)
 			}
 		}
-		// clear any locked sectors, metadata not synced to disk is safe to
-		// overwrite.
-		if _, err := tx.Exec(clearLockedSectors); err != nil {
-			return fmt.Errorf("failed to clear locked sectors table: %w", err)
-		}
-		return setDBVersion(tx, dbVersion)
+		return setDBVersion(tx, target)
 	})
 }

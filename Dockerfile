@@ -1,5 +1,5 @@
 # Helper image to build faucetd.
-FROM golang:1.26 AS builder
+FROM golang:1.27 AS builder
 
 WORKDIR /faucetd
 
