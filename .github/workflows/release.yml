@@ -8,15 +8,136 @@ on:
 permissions:
   contents: read
 
+env:
+  CGO_ENABLED: 1
+
 jobs:
   build:
     # Only release when the prepare-release PR is merged from this repo
     if: github.event.pull_request.merged == true && github.head_ref == 'release' && github.event.pull_request.head.repo.full_name == github.repository
-    uses: ./.github/workflows/build.yml
+    name: Build (${{ matrix.os }}/${{ matrix.arch }})
+    strategy:
+      matrix:
+        include:
+          - runner: tenki-standard-medium-4c-8g
+            os: linux
+            arch: amd64
+            build-args: -tags='netgo timetzdata' -trimpath -a -ldflags '-s -w -linkmode external -extldflags "-static"'
+          - runner: tenki-standard-medium-4c-8g
+            os: linux
+            arch: arm64
+            build-args: -tags='netgo timetzdata' -trimpath -a -ldflags '-s -w -linkmode external -extldflags "-static"'
+          - runner: macos-latest
+            os: darwin
+            arch: amd64
+            build-args: -tags='netgo timetzdata' -trimpath -a -ldflags '-s -w'
+          - runner: macos-latest
+            os: darwin
+            arch: arm64
+            build-args: -tags='netgo timetzdata' -trimpath -a -ldflags '-s -w'
+          - runner: windows-latest
+            os: windows
+            arch: amd64
+            build-args: -tags='netgo timetzdata' -trimpath -a -ldflags '-s -w -linkmode external -extldflags "-static"'
+    runs-on: ${{ matrix.runner }}
+    env:
+      RELEASE_NAME: faucetd_${{ matrix.os }}_${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Setup Linux
+        if: matrix.os == 'linux' && matrix.arch == 'arm64'
+        run: |
+          sudo apt update
+          sudo apt install -y gcc-aarch64-linux-gnu
+          echo "CC=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+      - name: Setup macOS
+        if: matrix.os == 'darwin'
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_KEY_B64: ${{ secrets.APPLE_KEY_B64 }}
+          APPLE_CERT_B64: ${{ secrets.APPLE_CERT_B64 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+          APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+        run: |
+          # extract apple cert
+          APPLE_CERT_PATH=$RUNNER_TEMP/apple_cert.p12
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          echo -n "$APPLE_CERT_B64" | base64 --decode --output $APPLE_CERT_PATH
+
+          # extract apple key
+          mkdir -p ~/private_keys
+          APPLE_API_KEY_PATH=~/private_keys/AuthKey_$APPLE_API_KEY.p8
+          echo -n "$APPLE_KEY_B64" | base64 --decode --output $APPLE_API_KEY_PATH
+
+          # create temp keychain
+          security create-keychain -p "$APPLE_KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security default-keychain -s $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$APPLE_KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          # import keychain
+          security import $APPLE_CERT_PATH -P $APPLE_CERT_PASSWORD -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security find-identity -v $KEYCHAIN_PATH -p codesigning
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k $APPLE_KEYCHAIN_PASSWORD $KEYCHAIN_PATH
+
+          # resync system clock https://github.com/actions/runner/issues/2996#issuecomment-1833103110
+          sudo sntp -sS time.windows.com
+      - name: Setup Windows
+        if: matrix.os == 'windows'
+        run: dotnet tool install --global AzureSignTool
+      - name: Build
+        shell: bash
+        env:
+          GOARCH: ${{ matrix.arch }}
+        run: go build -o bin/ ${{ matrix.build-args }} ./cmd/faucetd
+      - name: Sign macOS
+        if: matrix.os == 'darwin'
+        env:
+          APPLE_CERT_ID: ${{ secrets.APPLE_CERT_ID }}
+        run: |
+          for file in bin/*; do
+            /usr/bin/codesign --deep -f -v --timestamp -o runtime,library -s $APPLE_CERT_ID $file
+          done
+      - name: Sign Windows
+        if: matrix.os == 'windows'
+        shell: bash
+        run: |
+          for file in bin/*; do
+            azuresigntool sign -kvu "${{ secrets.AZURE_KEY_VAULT_URI }}" -kvi "${{ secrets.AZURE_CLIENT_ID }}" -kvt "${{ secrets.AZURE_TENANT_ID }}" -kvs "${{ secrets.AZURE_CLIENT_SECRET }}" -kvc ${{ secrets.AZURE_CERT_NAME }} -tr http://timestamp.digicert.com -v $file
+          done
+      - name: Package macOS
+        if: matrix.os == 'darwin'
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          mkdir -p release
+          ZIP_OUTPUT=release/$RELEASE_NAME.zip
+          # zip binaries with ditto for notarytool
+          ditto -ck bin $ZIP_OUTPUT
+          # submit to notary service
+          xcrun notarytool submit -k ~/private_keys/AuthKey_$APPLE_API_KEY.p8 -d $APPLE_API_KEY -i $APPLE_API_ISSUER --wait --timeout 10m $ZIP_OUTPUT
+      - name: Package
+        if: matrix.os != 'darwin'
+        shell: bash
+        run: |
+          mkdir -p release
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            7z a release/$RELEASE_NAME.zip ./bin/*
+          else
+            zip -qj release/$RELEASE_NAME.zip bin/*
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.RELEASE_NAME }}
+          path: release/
+          if-no-files-found: error
   release:
-    if: github.event.pull_request.merged == true && github.head_ref == 'release' && github.event.pull_request.head.repo.full_name == github.repository
     needs: [build]
-    runs-on: ubuntu-latest
+    runs-on: tenki-standard-medium-4c-8g
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
