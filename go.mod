@@ -3,7 +3,7 @@ module go.sia.tech/faucet // v0.1.0
 go 1.26.0
 
 require (
-	github.com/mattn/go-sqlite3 v1.14.50
+	github.com/mattn/go-sqlite3 v1.14.52
 	go.sia.tech/core v0.21.8-0.20260818102916-85bb6bf46516
 	go.sia.tech/coreutils v0.24.1-0.20260817111917-c7a1269e2e33
 	go.sia.tech/jape v0.14.3
