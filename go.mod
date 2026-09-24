@@ -3,9 +3,9 @@ module go.sia.tech/faucet // v0.1.0
 go 1.26.0
 
 require (
-	github.com/mattn/go-sqlite3 v1.14.50
+	github.com/mattn/go-sqlite3 v1.14.52
 	go.sia.tech/core v0.21.8-0.20260818102916-85bb6bf46516
-	go.sia.tech/coreutils v0.24.1-0.20260817111917-c7a1269e2e33
+	go.sia.tech/coreutils v0.24.1
 	go.sia.tech/jape v0.14.3
 	go.uber.org/zap v1.28.0
 	lukechampine.com/flagg v1.1.1
@@ -28,9 +28,9 @@ require (
 	go.sia.tech/mux v1.5.3 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/arch v0.30.0 // indirect
-	golang.org/x/crypto v0.56.0 // indirect
+	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/net v0.58.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/tools v0.49.0 // indirect
 )
