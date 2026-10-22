@@ -26,7 +26,7 @@ jobs:
       - name: Lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
       - name: Test
-        uses: n8maninger/action-golang-test@aa292dc81b16d34406a9551e629e0cdca00d9418 # v2.2.1
+        uses: n8maninger/action-golang-test@6d21a416337f76ddce0513e25949a5c456f02d38 # v2.3.0
         with:
           args: "-race;-tags='testing';-timeout=300s"
       - name: Build
